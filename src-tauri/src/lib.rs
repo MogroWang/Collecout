@@ -3,19 +3,15 @@ use tauri_plugin_fs::FsExt;
 /// 把用户通过对话框选中的路径登记进 tauri-plugin-fs 的运行时 scope。
 /// 导出的目标通常在默认授权范围（appdata/exe/home）之外，不做这一步写入会被拒绝。
 #[tauri::command]
-fn extend_fs_scope(
-    app: tauri::AppHandle,
-    path: String,
-    is_dir: bool,
-) -> Result<(), String> {
+fn extend_fs_scope(app: tauri::AppHandle, path: String, is_dir: bool) -> Result<(), String> {
     let p = std::path::PathBuf::from(&path);
-    let result = if is_dir {
-        app.allow_directory(p.as_path(), Some(true))
+    let scope = app.fs_scope();
+    if is_dir {
+        scope.allow_directory(&p, true)
     } else {
-        app.allow_file(p.as_path())
-    };
-    result.map_err(|e| e.to_string())?;
-    Ok(())
+        scope.allow_file(&p)
+    }
+    .map_err(|e| e.to_string())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
