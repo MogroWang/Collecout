@@ -31,6 +31,7 @@ const library: Library = {
   id: 'lib',
   name: '项目资料',
   templateId: 'tpl',
+  fields: [],
   sources: [],
   entries: [],
   createdAt: '',

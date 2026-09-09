@@ -1,17 +1,16 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useSettingsStore } from '../stores/settings'
+import { repo } from '../core/storage/repo'
 import { t } from '../locales/strings'
-import { isDesktop } from '../lib/platform'
+import { isDesktop, platform } from '../lib/platform'
 import AppIcon from '../components/AppIcon.vue'
 
 const settings = useSettingsStore()
 const dataPath = ref('')
 
 if (isDesktop()) {
-  void import('@tauri-apps/api/path').then(({ appDataDir }) => {
-    appDataDir().then((dir) => (dataPath.value = `${dir.replace(/\/$/, '')}/collecout`))
-  })
+  void repo().adapter.describeRoot?.().then((p) => (dataPath.value = p))
 }
 
 const themeOptions = [
@@ -76,7 +75,9 @@ async function openDataFolder() {
       <h2 class="group-title">{{ t.settings.data }}</h2>
       <div class="row">
         <span>{{ t.settings.dataLocation }}</span>
-        <span class="path meta">{{ isDesktop() ? dataPath : t.settings.dataLocalNote }}</span>
+        <span class="path meta">
+          {{ isDesktop() ? dataPath : platform() === 'capacitor' ? t.settings.dataAppNote : t.settings.dataLocalNote }}
+        </span>
         <button v-if="isDesktop() && dataPath" class="btn btn-sm" @click="openDataFolder">
           <AppIcon name="folder" :size="14" />
           {{ t.settings.openDataFolder }}

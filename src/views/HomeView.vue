@@ -29,7 +29,8 @@ function fmtDate(iso: string): string {
 }
 
 async function createLibrary() {
-  const lib = await libraries.create(newName.value || t.common.untitled, newTemplateId.value)
+  const fields = templates.byId(newTemplateId.value)?.fields.map((f) => ({ ...f })) ?? []
+  const lib = await libraries.create(newName.value || t.common.untitled, newTemplateId.value, fields)
   ui.toast(t.toast.libraryCreated(lib.name))
   showNew.value = false
   newName.value = ''

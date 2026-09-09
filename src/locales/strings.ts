@@ -2,7 +2,7 @@
 export const t = {
   appName: '萃序',
   appNameEn: 'Collecout',
-  version: '0.1.0',
+  version: '0.2.0',
 
   nav: {
     libraries: '库',
@@ -137,6 +137,14 @@ export const t = {
     imported: (n: number, lib: string) => `已把 ${n} 条条目导入「${lib}」`,
     reExtract: '重新提取',
     editCellHint: '点击浅色单元格可直接修改',
+    sheet: '工作表',
+    sheets: (n: number) => `${n} 个工作表`,
+    layout: '表格布局',
+    layoutAuto: '自动判断',
+    layoutTop: '首行为标题栏（每行一条）',
+    layoutLeft: '首列为标题栏（每列一条）',
+    layoutResolvedTop: '按首行标题解析',
+    layoutResolvedLeft: '按首列标题解析',
   },
 
   templates: {
@@ -173,6 +181,7 @@ export const t = {
     data: '数据',
     dataLocation: '数据存储位置',
     dataLocalNote: '浏览器预览模式：数据保存在本页 localStorage，仅供开发调试。',
+    dataAppNote: '安卓端：数据保存在应用专属目录 collecout-data 文件夹（Android/data/…/files/），卸载应用才会清除。',
     openDataFolder: '打开数据文件夹',
     about: '关于',
     aboutLine: '萃序 Collecout · 把零散文档萃成有序的信息库',
@@ -190,5 +199,6 @@ export const t = {
     title: '条目详情',
     sourceFrom: (f: string, l: string) => `来自「${f}」 ${l}`,
     noValue: '未填写',
+    deleteConfirm: '确定删除这条条目？',
   },
 } as const

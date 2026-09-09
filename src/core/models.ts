@@ -51,6 +51,8 @@ export interface Library {
   id: string
   name: string
   templateId: string
+  /** 库自带字段快照：条目值按键即这里的字段 id，不随模板后续变化 */
+  fields: FieldDef[]
   sources: SourceDoc[]
   entries: Entry[]
   createdAt: string
@@ -71,10 +73,16 @@ export const DEFAULT_SETTINGS: Settings = {
   defaultExportFormat: 'markdown',
 }
 
+/** crypto.randomUUID 仅在安全上下文可用，兜底保证任何环境都能生成 id */
+export function uuid(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID()
+  return `id-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`
+}
+
 export function newEntry(libraryId: string, sourceRef: SourceRef): Entry {
   const now = new Date().toISOString()
   return {
-    id: crypto.randomUUID(),
+    id: uuid(),
     libraryId,
     values: {},
     confidence: {},

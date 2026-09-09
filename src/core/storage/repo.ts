@@ -3,8 +3,6 @@ import { DEFAULT_SETTINGS } from '../models'
 import type { StorageAdapter } from './adapter'
 import { createWebAdapter } from './web'
 
-export const DATA_ROOT_NOTE = '应用数据目录 / collecout'
-
 interface StoredSettings {
   settings: Settings
 }

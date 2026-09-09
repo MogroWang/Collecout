@@ -97,26 +97,113 @@ export function inferKindFromSamples(values: string[]): FieldKind {
   return 'text'
 }
 
+/** 表格布局预设：auto 按结构现场判断，其余两种由用户显式指定 */
+export type TableLayout = 'auto' | 'headerTop' | 'headerLeft'
+
+export interface NormalizedTable {
+  header: string[]
+  rows: string[][]
+  layout: 'headerTop' | 'headerLeft'
+}
+
+/**
+ * 「第一列为字段名」的表转置为「第一行为表头」。
+ * grid 包含原首行（此布局下它不是表头，而是普通数据行）。
+ */
+export function transposeGrid(grid: string[][]): { header: string[]; rows: string[][] } {
+  if (grid.length === 0) return { header: [], rows: [] }
+  const width = Math.max(...grid.map((r) => r.length))
+  const header: string[] = grid.map((r) => (r[0] ?? '').trim())
+  const rows: string[][] = []
+  for (let c = 1; c < width; c++) {
+    rows.push(grid.map((r) => (r[c] ?? '').trim()))
+  }
+  return { header, rows }
+}
+
+/** 判断整张表更像「左侧列为字段名」的纵排表（字段-值对照，如个人简历页） */
+export function looksHeaderLeft(grid: string[][]): boolean {
+  if (grid.length < 3) return false
+  const width = Math.max(...grid.map((r) => r.length))
+  if (width < 2 || width > 8) return false
+  const labels = grid.map((r) => (r[0] ?? '').trim()).filter((s) => s !== '')
+  if (labels.length < grid.length * 0.8) return false
+  if (new Set(labels).size < labels.length * 0.7) return false
+  if (width === 2) {
+    // 两列：字段-值表通常行数有限，且取值列类型混杂（数字文字混着来）
+    if (grid.length > 15) return false
+    const values = grid.map((r) => (r[1] ?? '').trim()).filter((s) => s !== '')
+    if (values.length === 0) return false
+    return kindConsistency('date', values) < 0.6 && kindConsistency('number', values) < 0.6
+  }
+  // 多列：字段数明显多于记录数才倾向纵排
+  return grid.length >= width * 2
+}
+
+/** 按布局预设整理表格；auto 时现场判断并回传实际采用的布局 */
+export function applyTableLayout(table: { header: string[]; rows: string[][] }, layout: TableLayout): NormalizedTable {
+  if (layout === 'headerLeft') {
+    return { ...transposeGrid([table.header, ...table.rows]), layout: 'headerLeft' }
+  }
+  if (layout === 'auto' && looksHeaderLeft([table.header, ...table.rows])) {
+    return { ...transposeGrid([table.header, ...table.rows]), layout: 'headerLeft' }
+  }
+  return { header: table.header, rows: table.rows, layout: 'headerTop' }
+}
+
+function normName(s: string): string {
+  return s.trim().toLowerCase().replace(/\s+/g, '')
+}
+
+/** 多份字段表按字段名合并（同名去重，保留首次出现的定义），用于跨文件 / 跨工作表入库 */
+export function mergeFieldsByName(fieldsList: FieldDef[][]): FieldDef[] {
+  const out: FieldDef[] = []
+  const seen = new Set<string>()
+  for (const fields of fieldsList) {
+    for (const f of fields) {
+      const key = normName(f.name)
+      if (key === '' || seen.has(key)) continue
+      seen.add(key)
+      out.push({ ...f })
+    }
+  }
+  return out
+}
+
 export interface InferredImport {
   template: Template
   mode: 'table' | 'document'
   tableIndex?: number
+  /** 整理后的表格（已按布局预设转置）；仅表格模式返回 */
+  table?: { header: string[]; rows: string[][] }
+  /** auto 布局现场判断出的实际布局 */
+  resolvedLayout?: 'headerTop' | 'headerLeft'
 }
 
 const MAX_FIELDS = 12
 
+export interface InferOptions {
+  /** 指定使用第几个表格块（多工作表选择），缺省取行数最多的表 */
+  tableIndex?: number
+  /** 表格布局预设，缺省 auto */
+  layout?: TableLayout
+}
+
 /** 「自动识别」：根据文档结构推断模板与导入模式 */
-export function inferTemplate(doc: ParsedDoc, builtinTemplateId: string): InferredImport {
+export function inferTemplate(doc: ParsedDoc, builtinTemplateId: string, opts: InferOptions = {}): InferredImport {
   const tables = doc.blocks.filter((b): b is Extract<Block, { type: 'table' }> => b.type === 'table')
   const paras = doc.blocks.filter((b) => b.type === 'para' || b.type === 'listItem')
   const tableRows = tables.reduce((n, t) => n + t.rows.length, 0)
 
-  if (tableRows >= Math.max(3, paras.length) && tables.length > 0) {
-    // 表格主导：取行数最多的表
+  const explicit = opts.tableIndex !== undefined && tables[opts.tableIndex] !== undefined
+  if (tables.length > 0 && (tableRows >= Math.max(3, paras.length) || explicit)) {
+    // 表格主导：默认取行数最多的表，指定 tableIndex 时以用户选择为准
     let table = tables[0]
-    for (const t of tables) if (t.rows.length > table.rows.length) table = t
-    const fields: FieldDef[] = table.header.slice(0, MAX_FIELDS).map((name, i) => {
-      const samples = table.rows.slice(0, 20).map((r) => r[i] ?? '')
+    if (explicit) table = tables[opts.tableIndex as number]
+    else for (const t of tables) if (t.rows.length > table.rows.length) table = t
+    const normalized = applyTableLayout({ header: table.header, rows: table.rows }, opts.layout ?? 'auto')
+    const fields: FieldDef[] = normalized.header.slice(0, MAX_FIELDS).map((name, i) => {
+      const samples = normalized.rows.slice(0, 20).map((r) => r[i] ?? '')
       return {
         id: `f_col${i}`,
         name: name || `列${i + 1}`,
@@ -127,10 +214,12 @@ export function inferTemplate(doc: ParsedDoc, builtinTemplateId: string): Inferr
     return {
       mode: 'table',
       tableIndex: doc.blocks.indexOf(table),
+      table: { header: normalized.header, rows: normalized.rows },
+      resolvedLayout: normalized.layout,
       template: {
         id: builtinTemplateId,
         name: '自动识别',
-        description: `按表头「${table.header.slice(0, 4).filter(Boolean).join('、')}」等 ${fields.length} 列提取`,
+        description: `按表头「${normalized.header.slice(0, 4).filter(Boolean).join('、')}」等 ${fields.length} 列提取`,
         builtin: true,
         fields,
       },

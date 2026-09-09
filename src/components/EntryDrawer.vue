@@ -22,7 +22,7 @@ function save() {
 }
 
 function remove() {
-  if (window.confirm(t.library.deleteTitle)) emit('delete', props.entry.id)
+  if (window.confirm(t.entryDrawer.deleteConfirm)) emit('delete', props.entry.id)
 }
 
 function isTitle(field: Template['fields'][number]): boolean {

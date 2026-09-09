@@ -5,4 +5,6 @@ export interface StorageAdapter {
   remove(path: string): Promise<void>
   listFiles(dir: string): Promise<string[]>
   exists(path: string): Promise<boolean>
+  /** 数据根目录的可读描述（绝对路径或平台化说明），供设置页展示 */
+  describeRoot?(): Promise<string>
 }

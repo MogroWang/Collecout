@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ACCEPTED_EXTENSIONS } from '../core/parsers'
+import type { TableLayout } from '../core/extract'
 import { useImporterStore } from '../stores/importer'
 import { useLibrariesStore } from '../stores/libraries'
 import { useTemplatesStore } from '../stores/templates'
@@ -177,6 +178,9 @@ async function finish() {
           · 表格 {{ f.doc.blocks.filter((b) => b.type === 'table').length }}
           · 段落 {{ f.doc.blocks.filter((b) => b.type !== 'table').length }}
         </p>
+        <p v-if="f.tables.length > 1" class="meta sheet-line">
+          {{ t.import.sheets(f.tables.length) }}：{{ f.tables.map((tb, i) => `${tb.label || `表格${i + 1}`}（${tb.rows.length} 行）`).join('、') }}
+        </p>
       </div>
     </section>
 
@@ -221,6 +225,35 @@ async function finish() {
             <strong>{{ activeFile.file.name }}</strong>
             {{ activeFile.mode === 'table' ? t.import.tableMode : activeFile.drafts.length > 1 ? t.import.logMode : t.import.documentMode }}
           </p>
+
+          <div v-if="activeFile.mode === 'table'" class="tuning">
+            <label v-if="activeFile.tables.length > 1" class="tune-row">
+              <span>{{ t.import.sheet }}</span>
+              <select
+                :value="activeFile.activeTable"
+                class="select"
+                @change="importer.setActiveSheet(activeFile.id, Number(($event.target as HTMLSelectElement).value))"
+              >
+                <option v-for="(tb, ti) in activeFile.tables" :key="ti" :value="ti">
+                  {{ tb.label || `表格${ti + 1}` }}（{{ tb.rows.length }} 行）
+                </option>
+              </select>
+            </label>
+            <label class="tune-row">
+              <span>{{ t.import.layout }}</span>
+              <select
+                :value="activeFile.layout"
+                class="select"
+                @change="importer.setLayout(activeFile.id, ($event.target as HTMLSelectElement).value as TableLayout)"
+              >
+                <option value="auto">{{ t.import.layoutAuto }}</option>
+                <option value="headerTop">{{ t.import.layoutTop }}</option>
+                <option value="headerLeft">{{ t.import.layoutLeft }}</option>
+              </select>
+              <span v-if="activeFile.resolvedLayout === 'headerLeft'" class="chip">{{ t.import.layoutResolvedLeft }}</span>
+              <span v-else-if="activeFile.resolvedLayout === 'headerTop'" class="chip">{{ t.import.layoutResolvedTop }}</span>
+            </label>
+          </div>
 
           <div v-if="activeFile.mode === 'table' && activeFile.tableHeader" class="mapping">
             <div v-for="field in activeFile.inferred?.fields ?? []" :key="field.id" class="map-row">
@@ -487,6 +520,35 @@ async function finish() {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.tuning {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--hairline);
+}
+
+.tune-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tune-row > span:first-child {
+  flex: none;
+  font-weight: 500;
+}
+
+.tune-row .select {
+  width: auto;
+  min-width: 180px;
+}
+
+.sheet-line {
+  margin-top: 2px;
 }
 
 .mapping {

@@ -76,7 +76,28 @@ const rows = [
   ['2026-08-26', '办公用品', '办公', 76.4, '支出', '标签纸与笔'],
 ]
 XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), '八月')
+// 第二个工作表：演示导入向导里的多工作表选择
+const sep = [
+  ['日期', '项目', '类别', '金额', '收支', '备注'],
+  ['2026-09-02', '域名续费', '办公', 68, '支出', 'collecout.cn'],
+  ['2026-09-06', '外包测试', '支出', 800, '支出', '安卓兼容性回归'],
+  ['2026-09-08', '授权费', '收入', 2400, '收入', '第二个内测用户'],
+]
+XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(sep), '九月')
 const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' })
 writeFileSync(join(dir, '收支流水.xlsx'), buf)
 
-console.log('已生成 samples/ 下的示例文件：会议纪要.txt、读书笔记.md、工作日志.txt、收支流水.xlsx')
+// 纵排字段-值表：演示「首列为标题栏」布局预设
+const profile = XLSX.utils.aoa_to_sheet([
+  ['姓名', '陈拓'],
+  ['部门', '研发部'],
+  ['入职日期', '2024-03-18'],
+  ['职位', '测试工程师'],
+  ['工作地点', '杭州'],
+  ['分机号', '6021'],
+])
+const profileWb = XLSX.utils.book_new()
+XLSX.utils.book_append_sheet(profileWb, profile, '个人信息')
+writeFileSync(join(dir, '个人资料.xlsx'), XLSX.write(profileWb, { type: 'buffer', bookType: 'xlsx' }))
+
+console.log('已生成 samples/ 下的示例文件：会议纪要.txt、读书笔记.md、工作日志.txt、收支流水.xlsx、个人资料.xlsx')

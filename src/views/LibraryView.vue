@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import type { Entry } from '../core/models'
+import type { Entry, Template } from '../core/models'
 import { applyFilters, EMPTY_FILTER, sortEntries, type FilterState, type SortDir } from '../core/query/filter'
 import { useLibrariesStore } from '../stores/libraries'
 import { useTemplatesStore } from '../stores/templates'
@@ -35,7 +35,15 @@ const renameText = ref('')
 const showFilterPanel = ref(false)
 
 const library = computed(() => libraries.byId(props.id))
-const template = computed(() => templates.byId(library.value?.templateId ?? '') ?? templates.byId('tpl_auto')!)
+const templateName = computed(() => templates.byId(library.value?.templateId ?? '')?.name ?? '')
+/** 字段用库自带的快照（与条目值的键一致），模板仅提供名字展示 */
+const template = computed<Template>(() => ({
+  id: library.value?.templateId ?? '',
+  name: templateName.value || library.value?.name || '',
+  description: '',
+  builtin: false,
+  fields: library.value?.fields ?? [],
+}))
 const fields = computed(() => template.value.fields)
 
 watch(
