@@ -51,6 +51,18 @@ npx cap open android   # 在 Android Studio 中打包 APK
 
 示例文件在 `samples/` 目录（会议纪要、读书笔记、工作日志、收支流水），导入向导里可直接试用。
 
+## 持续构建
+
+推送或 PR 时，GitHub Actions（`.github/workflows/build.yml`）会自动构建三个产物并上传到 Actions Artifacts：
+
+| 产物 | 运行器 | 说明 |
+| --- | --- | --- |
+| Windows x64 便携版 | `windows-latest` | 单文件 exe，免安装，系统需带 WebView2 运行时（Win10/11 默认自带） |
+| macOS arm64 DMG | `macos-latest` | 未做公证，首次打开需右键 → 打开，或 `xattr -cr /Applications/Collecout.app` |
+| 安卓 APK | `ubuntu-latest` | release 签名；未配置证书时自动退回 debug 签名，可直接安装 |
+
+安卓正式签名（可选）：在仓库 Secrets 里配置 `ANDROID_KEYSTORE_BASE64`（keystore 文件的 base64）、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEYSTORE_ALIAS` 三项即可。
+
 ## 目录结构
 
 ```
