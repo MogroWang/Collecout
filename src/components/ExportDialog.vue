@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { Entry, ExportFormat, Library, Template } from '../core/models'
-import { exportCsv, exportJson, exportMarkdown, exportPlainText } from '../core/export'
+import { exportCsv, exportJson, exportMarkdown, exportPlainText, type TextExportStyle } from '../core/export'
 import { exportFolderPlan } from '../core/export'
 import { useSettingsStore } from '../stores/settings'
 import { useUiStore } from '../stores/ui'
 import { t } from '../locales/strings'
 import { isDesktop } from '../lib/platform'
-import { downloadText, mkdirAbsolute, pickDirectory, pickSavePath, revealInFinder, writeTextAbsolute } from '../lib/desktop'
+import { copyToClipboard, downloadText, mkdirAbsolute, pickDirectory, pickSavePath, revealInFinder, writeTextAbsolute } from '../lib/desktop'
 import AppModal from './AppModal.vue'
 import AppIcon from './AppIcon.vue'
 
@@ -27,6 +27,7 @@ const ui = useUiStore()
 const scope = ref<'all' | 'filtered' | 'selected'>('all')
 const chosenFields = ref<string[]>(props.template.fields.map((f) => f.id))
 const format = ref<ExportFormat>(settings.settings.defaultExportFormat)
+const textStyle = ref<TextExportStyle>('tsv')
 const exportedPath = ref<string | null>(null)
 const exportedIsDir = ref(false)
 
@@ -46,6 +47,22 @@ const formats: { id: ExportFormat; name: string; desc: string }[] = [
 
 const selection = computed(() => ({ fields: chosenFields.value }))
 
+/** 按当前选项生成导出内容（复制到剪贴板与导出共用） */
+function buildResult(): { fileName: string; content: string } | null {
+  switch (format.value) {
+    case 'markdown':
+      return exportMarkdown(props.library, props.template, entries.value, selection.value)
+    case 'text':
+      return exportPlainText(props.library, props.template, entries.value, selection.value, textStyle.value)
+    case 'csv':
+      return exportCsv(props.library, props.template, entries.value, selection.value)
+    case 'json':
+      return exportJson(props.library, props.template, entries.value, selection.value)
+    default:
+      return null
+  }
+}
+
 const preview = computed<string>(() => {
   if (entries.value.length === 0) return ''
   const sample = entries.value.slice(0, 2)
@@ -53,7 +70,7 @@ const preview = computed<string>(() => {
     case 'markdown':
       return exportMarkdown(props.library, props.template, sample, selection.value).content
     case 'text':
-      return exportPlainText(props.library, props.template, sample, selection.value).content
+      return exportPlainText(props.library, props.template, sample, selection.value, textStyle.value).content
     case 'csv':
       return exportCsv(props.library, props.template, sample, selection.value).content.replace(/^\uFEFF/, '')
     case 'json':
@@ -82,29 +99,34 @@ async function doExport() {
     } else {
       await exportAsFile()
     }
+    // 文件成功落盘后才关闭导出窗口（复制到剪贴板不关闭）
+    emit('close')
   } catch (err) {
     ui.toast(err instanceof Error ? err.message : '导出失败', 'danger')
   }
 }
 
-async function exportAsFile() {
-  let result: { fileName: string; content: string }
-  switch (format.value) {
-    case 'markdown':
-      result = exportMarkdown(props.library, props.template, entries.value, selection.value)
-      break
-    case 'text':
-      result = exportPlainText(props.library, props.template, entries.value, selection.value)
-      break
-    case 'csv':
-      result = exportCsv(props.library, props.template, entries.value, selection.value)
-      break
-    case 'json':
-      result = exportJson(props.library, props.template, entries.value, selection.value)
-      break
-    default:
-      return
+async function copyResult() {
+  if (entries.value.length === 0) return
+  if (format.value === 'folder') {
+    const plan = exportFolderPlan(props.library, props.template, entries.value, selection.value)
+    const text = Object.entries(plan.files)
+      .map(([name, content]) => `/* ${name} */\n${content}`)
+      .join('\n\n')
+    const ok = await copyToClipboard(text)
+    if (ok) ui.toast(t.exportDialog.copied)
+    return
   }
+  const result = buildResult()
+  if (!result) return
+  const ok = await copyToClipboard(result.content)
+  if (ok) ui.toast(t.exportDialog.copied)
+  else ui.toast('复制失败', 'danger')
+}
+
+async function exportAsFile() {
+  const result = buildResult()
+  if (!result) return
   if (isDesktop()) {
     const path = await pickSavePath(result.fileName)
     if (!path) return
@@ -195,6 +217,24 @@ async function reveal() {
             <span class="hint">{{ fmt.desc }}</span>
           </button>
         </div>
+
+        <!-- 纯文本：选择制表符分隔或分节形式 -->
+        <div v-if="format === 'text'" class="text-style">
+          <label class="radio">
+            <input v-model="textStyle" type="radio" value="tsv" />
+            <span>
+              <strong>{{ t.exportDialog.textTsv }}</strong>
+              <span class="hint style-hint">{{ t.exportDialog.textTsvDesc }}</span>
+            </span>
+          </label>
+          <label class="radio">
+            <input v-model="textStyle" type="radio" value="sections" />
+            <span>
+              <strong>{{ t.exportDialog.textSections }}</strong>
+              <span class="hint style-hint">{{ t.exportDialog.textSectionsDesc }}</span>
+            </span>
+          </label>
+        </div>
       </section>
 
       <section v-if="preview" class="exp-section">
@@ -212,6 +252,10 @@ async function reveal() {
         </button>
       </span>
       <span class="meta">{{ entries.length }} {{ t.exportDialog.entriesUnit }}</span>
+      <button class="btn" :disabled="entries.length === 0" @click="copyResult">
+        <AppIcon name="copy" :size="15" />
+        {{ t.exportDialog.copyClipboard }}
+      </button>
       <button class="btn btn-primary" :disabled="entries.length === 0" @click="doExport">
         <AppIcon name="export" :size="15" />
         {{ t.exportDialog.doExport }}
@@ -256,6 +300,26 @@ async function reveal() {
 
 .radio input {
   accent-color: var(--accent);
+}
+
+.text-style {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border-radius: var(--r-m);
+}
+
+.text-style .radio > span {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.style-hint {
+  margin-left: 0;
 }
 
 .fmt-grid {
@@ -321,5 +385,10 @@ async function reveal() {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.btn-sm {
+  height: 28px;
+  font-size: 12px;
 }
 </style>

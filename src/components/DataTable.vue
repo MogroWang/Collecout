@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import type { Entry, FieldDef } from '../core/models'
-import AppIcon from './AppIcon.vue'
 
 const props = defineProps<{
   fields: FieldDef[]
@@ -10,7 +9,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  'toggle-select': [id: string]
+  select: [id: string, index: number, mod: { shift: boolean; meta: boolean }]
   'toggle-all': []
   sort: [fieldId: string]
   open: [id: string]
@@ -29,6 +28,14 @@ function onHeaderClick(field: FieldDef) {
 function allSelected(): boolean {
   return props.entries.length > 0 && props.entries.every((e) => props.selected.has(e.id))
 }
+
+/** 勾选框：支持 Shift 范围选择与 Ctrl/Cmd 切换 */
+function onCheck(entry: Entry, index: number, e: Event) {
+  emit('select', entry.id, index, {
+    shift: (e as MouseEvent).shiftKey,
+    meta: (e as MouseEvent).ctrlKey || (e as MouseEvent).metaKey,
+  })
+}
 </script>
 
 <template>
@@ -42,21 +49,23 @@ function allSelected(): boolean {
           v-for="field in props.fields"
           :key="field.id"
           class="sortable"
+          :class="{ sorted: props.sort?.fieldId === field.id }"
           @click="onHeaderClick(field)"
         >
           <span class="th-inner">
             {{ field.name }}
-            <AppIcon v-if="props.sort?.fieldId === field.id" :name="props.sort.dir === 'asc' ? 'sort' : 'sort'" :size="13" />
+            <span v-if="props.sort?.fieldId === field.id" class="sort-mark">{{ props.sort.dir === 'asc' ? '↑' : '↓' }}</span>
           </span>
         </th>
       </tr>
     </thead>
     <tbody>
       <tr
-        v-for="entry in props.entries"
+        v-for="(entry, i) in props.entries"
         :key="entry.id"
         class="row-click"
         :class="{ selected: props.selected.has(entry.id) }"
+        :data-entry-id="entry.id"
         @click="emit('open', entry.id)"
       >
         <td class="col-check" @click.stop>
@@ -64,7 +73,7 @@ function allSelected(): boolean {
             type="checkbox"
             :checked="props.selected.has(entry.id)"
             :aria-label="`选择 ${entry.id}`"
-            @change="emit('toggle-select', entry.id)"
+            @change="onCheck(entry, i, $event)"
           />
         </td>
         <td v-for="field in props.fields" :key="field.id">
@@ -90,6 +99,11 @@ function allSelected(): boolean {
   display: inline-flex;
   align-items: center;
   gap: 3px;
+}
+
+.sort-mark {
+  color: var(--accent);
+  font-size: 11px;
 }
 
 .cell-date {

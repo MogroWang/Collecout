@@ -57,6 +57,10 @@ export interface Library {
   entries: Entry[]
   createdAt: string
   updatedAt: string
+  /** 库文件独立存放的目录（绝对路径）；缺省 / null 表示存放在软件数据文件夹内 */
+  storagePath?: string | null
+  /** 独立存放时的文件名（如「我的藏书.json」）；内部库固定为 libraries/<id>.json，无需此字段 */
+  fileName?: string | null
 }
 
 export type ExportFormat = 'markdown' | 'text' | 'csv' | 'json' | 'folder'

@@ -26,9 +26,34 @@ export function exportMarkdown(library: Library, template: Template, entries: En
   return { fileName: `${library.name}.md`, content: lines.join('\n') }
 }
 
-/** 纯文本：首行表头，制表符分隔，方便粘贴到任何地方 */
-export function exportPlainText(library: Library, template: Template, entries: Entry[], selection: ExportSelection): ExportTextResult {
+/** 纯文本排版方式：制表符分隔（表格状）或分节形式（逐条罗列） */
+export type TextExportStyle = 'tsv' | 'sections'
+
+/** 纯文本。tsv：首行表头 + 制表符分隔，方便粘贴到表格；sections：每条一个小节，逐字段罗列 */
+export function exportPlainText(
+  library: Library,
+  template: Template,
+  entries: Entry[],
+  selection: ExportSelection,
+  style: TextExportStyle = 'tsv',
+): ExportTextResult {
   const fields = selectedFields(template, selection.fields)
+  if (style === 'sections') {
+    const lines: string[] = [`${library.name}`, headerBlock(template, entries.length), '']
+    entries.forEach((entry, i) => {
+      lines.push(`────────────────────────`)
+      lines.push(`${i + 1}. ${entryTitle(entry, template)}`)
+      lines.push(`────────────────────────`)
+      for (const f of fields) {
+        const v = entry.values[f.id]
+        if (v === undefined || String(v) === '') continue
+        const display = f.kind === 'date' ? formatDate(String(v)) : String(v)
+        lines.push(`${f.name}：${display.replace(/\n/g, '\n    ')}`)
+      }
+      lines.push('')
+    })
+    return { fileName: `${library.name}.txt`, content: lines.join('\n') }
+  }
   const lines: string[] = [fields.map((f) => f.name).join('\t')]
   for (const entry of entries) {
     lines.push(fields.map((f) => {

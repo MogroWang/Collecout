@@ -4,7 +4,9 @@ import { useRouter } from 'vue-router'
 import { useLibrariesStore } from '../stores/libraries'
 import { useTemplatesStore } from '../stores/templates'
 import { useUiStore } from '../stores/ui'
+import { repo } from '../core/storage/repo'
 import { t } from '../locales/strings'
+import { isDesktop } from '../lib/platform'
 import AppIcon from '../components/AppIcon.vue'
 import AppModal from '../components/AppModal.vue'
 import EmptyState from '../components/EmptyState.vue'
@@ -17,6 +19,20 @@ const ui = useUiStore()
 const showNew = ref(false)
 const newName = ref('')
 const newTemplateId = ref(templates.all[0]?.id ?? 'tpl_auto')
+/** 新库存放位置：null = 软件数据文件夹；字符串 = 独立目录（桌面端） */
+const newLocation = ref<string | null>(null)
+const creating = ref(false)
+
+/** radio 使用的 'inner' / 'custom' 代理值 */
+const newLocationNullProxy = computed({
+  get: () => (newLocation.value === null ? 'inner' : 'custom'),
+  set: (v: string) => {
+    if (v === 'inner') newLocation.value = null
+    else if (newLocation.value === null) newLocation.value = ''
+  },
+})
+
+const canCreate = computed(() => !creating.value && (newLocationNullProxy.value === 'inner' || newLocation.value !== ''))
 
 const sorted = computed(() => libraries.libraries)
 
@@ -28,13 +44,34 @@ function fmtDate(iso: string): string {
   return iso.slice(0, 10)
 }
 
-async function createLibrary() {
-  const fields = templates.byId(newTemplateId.value)?.fields.map((f) => ({ ...f })) ?? []
-  const lib = await libraries.create(newName.value || t.common.untitled, newTemplateId.value, fields)
-  ui.toast(t.toast.libraryCreated(lib.name))
-  showNew.value = false
+function openNewDialog() {
   newName.value = ''
-  router.push(`/library/${lib.id}`)
+  newLocation.value = null
+  showNew.value = true
+}
+
+async function pickLocation() {
+  const { pickDirectory } = await import('../lib/desktop')
+  const dir = await pickDirectory()
+  if (!dir) return
+  if (!(await repo().canWriteAbs(dir))) {
+    ui.toast(t.settings.locationNotWritable, 'danger')
+    return
+  }
+  newLocation.value = dir
+}
+
+async function createLibrary() {
+  creating.value = true
+  try {
+    const fields = templates.byId(newTemplateId.value)?.fields.map((f) => ({ ...f })) ?? []
+    const lib = await libraries.create(newName.value || t.common.untitled, newTemplateId.value, fields, newLocation.value)
+    ui.toast(t.toast.libraryCreated(lib.name))
+    showNew.value = false
+    router.push(`/library/${lib.id}`)
+  } finally {
+    creating.value = false
+  }
 }
 </script>
 
@@ -47,7 +84,7 @@ async function createLibrary() {
           <AppIcon name="import" :size="15" />
           {{ t.home.import }}
         </button>
-        <button class="btn btn-primary" @click="showNew = true">
+        <button class="btn btn-primary" @click="openNewDialog">
           <AppIcon name="plus" :size="15" />
           {{ t.nav.newLibrary }}
         </button>
@@ -64,7 +101,7 @@ async function createLibrary() {
         <AppIcon name="import" :size="15" />
         {{ t.home.import }}
       </button>
-      <button class="btn" @click="showNew = true">{{ t.home.emptyNew }}</button>
+      <button class="btn" @click="openNewDialog">{{ t.home.emptyNew }}</button>
     </EmptyState>
 
     <div v-else class="lib-grid">
@@ -74,7 +111,10 @@ async function createLibrary() {
         class="card clickable lib-card"
         @click="openLibrary(lib.id)"
       >
-        <h2 class="lib-name">{{ lib.name }}</h2>
+        <h2 class="lib-name">
+          {{ lib.name }}
+          <AppIcon v-if="lib.storagePath" name="folder" :size="13" class="ext-mark" />
+        </h2>
         <p class="meta">
           {{ templates.byId(lib.templateId)?.name ?? t.common.untitled }}
           · {{ lib.entries.length }} {{ t.home.entries }}
@@ -100,10 +140,36 @@ async function createLibrary() {
           </select>
           <p class="hint">{{ templates.byId(newTemplateId)?.description }}</p>
         </div>
+        <div v-if="isDesktop()" class="form-row">
+          <label>{{ t.home.newLibLocation }}</label>
+          <label class="loc-row">
+            <input v-model="newLocationNullProxy" type="radio" value="inner" />
+            <span>
+              <span class="loc-name">{{ t.home.locationInner }}</span>
+              <span class="hint loc-desc">{{ t.home.locationInnerDesc }}</span>
+            </span>
+          </label>
+          <label class="loc-row">
+            <input v-model="newLocationNullProxy" type="radio" value="custom" />
+            <span>
+              <span class="loc-name">{{ newLocation ?? t.home.locationCustom }}</span>
+              <span class="hint loc-desc">{{ t.home.locationCustomDesc }}</span>
+            </span>
+          </label>
+          <button
+            v-if="newLocationNullProxy === 'custom'"
+            class="btn btn-sm"
+            :disabled="creating"
+            @click="pickLocation"
+          >
+            <AppIcon name="folder" :size="14" />
+            {{ t.oobe.pickFolder }}
+          </button>
+        </div>
       </div>
       <footer class="modal-foot">
         <button class="btn" @click="showNew = false">{{ t.common.cancel }}</button>
-        <button class="btn btn-primary" @click="createLibrary">{{ t.home.create }}</button>
+        <button class="btn btn-primary" :disabled="!canCreate" @click="createLibrary">{{ t.home.create }}</button>
       </footer>
     </AppModal>
   </div>
@@ -142,6 +208,55 @@ async function createLibrary() {
   font-size: 15px;
   font-weight: 600;
   margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ext-mark {
+  color: var(--ink-3);
+  flex: none;
+}
+
+.loc-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-s);
+  cursor: pointer;
+}
+
+.loc-row:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.loc-row input {
+  margin-top: 3px;
+}
+
+.loc-row > span {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.loc-name {
+  font-weight: 500;
+  word-break: break-all;
+}
+
+.loc-desc {
+  margin-top: 2px;
+}
+
+.btn-sm {
+  height: 28px;
+  font-size: 12px;
+  align-self: flex-start;
 }
 
 @media (max-width: 860px) {

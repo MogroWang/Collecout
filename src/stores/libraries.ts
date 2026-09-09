@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import type { Entry, FieldDef, Library } from '../core/models'
 import { newEntry, uuid } from '../core/models'
 import { BUILTIN_TEMPLATES, inferKindFromSamples, type DraftEntry } from '../core/extract'
-import { repo } from '../core/storage/repo'
+import { externalLibraryPath, isExternalLibrary, repo } from '../core/storage/repo'
 
 function libFile(id: string): string {
   return `libraries/${id}.json`
@@ -10,11 +10,21 @@ function libFile(id: string): string {
 
 function persist(lib: Library) {
   lib.updatedAt = new Date().toISOString()
-  void repo().saveNow(libFile(lib.id), lib)
+  void repo().saveLibrary(lib)
 }
 
 function normName(s: string): string {
   return s.trim().toLowerCase().replace(/\s+/g, '')
+}
+
+/** 生成外部库文件名：库名.json，与目录中已有文件重名时追加序号 */
+async function pickExternalFileName(dir: string, name: string): Promise<string> {
+  const base = (name.trim().replace(/[\\/:*?"<>|\n\r\t]/g, '-').trim() || '未命名库').slice(0, 60)
+  let candidate = `${base}.json`
+  for (let n = 2; await repo().adapter.existsAbs?.(`${dir}/${candidate}`); n++) {
+    candidate = `${base}（${n}）.json`
+  }
+  return candidate
 }
 
 /**
@@ -52,6 +62,69 @@ function rebuildLegacyFields(lib: Library): FieldDef[] {
   })
 }
 
+/* ---------- 追加入库的重复 / 冲突检测 ---------- */
+
+function titleFieldOf(fields: FieldDef[]): FieldDef | undefined {
+  return (
+    fields.find((f) => f.kind === 'text' && /标题|主题|题目|书名|项目|name|title/i.test(f.name)) ??
+    fields.find((f) => f.kind === 'text')
+  )
+}
+
+function normValue(v: string | number | undefined): string {
+  return String(v ?? '').trim().toLowerCase().replace(/\s+/g, '')
+}
+
+/** 条目身份键：优先用标题字段，没有文本字段时用全部字段值拼接 */
+function entryKey(values: Record<string, string | number>, fields: FieldDef[]): string {
+  const title = titleFieldOf(fields)
+  if (title && values[title.id] !== undefined && String(values[title.id]).trim() !== '') {
+    return normValue(values[title.id] as string)
+  }
+  return fields
+    .map((f) => normValue(values[f.id] as string))
+    .filter((s) => s !== '')
+    .join('\u0001')
+}
+
+function sameValues(a: Record<string, string | number>, b: Record<string, string | number>, fields: FieldDef[]): boolean {
+  return fields.every((f) => {
+    const av = a[f.id]
+    const bv = b[f.id]
+    return (av === undefined || String(av) === '') === (bv === undefined || String(bv) === '') &&
+      (av === undefined || String(av) === '' || normValue(av as string) === normValue(bv as string))
+  })
+}
+
+export interface AppendConflict {
+  /** 草稿在批次中的下标 */
+  index: number
+  /** 冲突的现有条目 */
+  existing: Entry
+  kind: 'duplicate' | 'conflict'
+}
+
+export interface AppendPlan {
+  /** 完全重复（所有字段值一致），默认覆盖 */
+  duplicates: AppendConflict[]
+  /** 键相同但字段值不同，需要用户决定 */
+  conflicts: AppendConflict[]
+}
+
+/** 每条冲突的处理决定（draftIndex → 覆盖现有 / 跳过） */
+export type ConflictDecision = 'overwrite' | 'skip'
+
+export interface AppendOptions {
+  /** 冲突项的处理决定（draft 下标 → 决定）；未列出的冲突项按 skip 处理。重复项始终覆盖。 */
+  decisions?: Record<number, ConflictDecision>
+}
+
+export interface AppendResult {
+  added: number
+  overwritten: number
+  skipped: number
+}
+
 export const useLibrariesStore = defineStore('libraries', {
   state: () => ({
     libraries: [] as Library[],
@@ -69,7 +142,11 @@ export const useLibrariesStore = defineStore('libraries', {
       }
       this.libraries.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
     },
-    async create(name: string, templateId: string, fields: FieldDef[] = []): Promise<Library> {
+    /**
+     * 新建库。storageDir 为 null/undefined 时存放在软件数据文件夹内；
+     * 传入目录（桌面端）时库文件独立存放到该位置。
+     */
+    async create(name: string, templateId: string, fields: FieldDef[] = [], storageDir: string | null = null): Promise<Library> {
       const now = new Date().toISOString()
       const lib: Library = {
         id: uuid(),
@@ -80,9 +157,17 @@ export const useLibrariesStore = defineStore('libraries', {
         entries: [],
         createdAt: now,
         updatedAt: now,
+        storagePath: storageDir,
+        fileName: null,
+      }
+      if (storageDir) {
+        lib.fileName = await pickExternalFileName(storageDir, lib.name)
+        await repo().saveLibrary(lib)
+      } else {
+        lib.storagePath = null
+        await repo().saveNow(libFile(lib.id), lib)
       }
       this.libraries.unshift(lib)
-      await repo().saveNow(libFile(lib.id), lib)
       return lib
     },
     rename(id: string, name: string) {
@@ -91,22 +176,108 @@ export const useLibrariesStore = defineStore('libraries', {
       lib.name = name.trim() || lib.name
       persist(lib)
     },
+    /** 把库文件搬到另一个位置（null = 搬回数据文件夹内部），返回更新后的库 */
+    async moveLibrary(id: string, newDir: string | null): Promise<Library | null> {
+      const lib = this.byId(id)
+      if (!lib) return null
+      const samePlace =
+        (newDir === null && !isExternalLibrary(lib)) ||
+        (newDir !== null && isExternalLibrary(lib) && lib.storagePath === newDir)
+      if (samePlace) return lib
+      const fileName = isExternalLibrary(lib)
+        ? await pickExternalFileName(newDir ?? '', lib.fileName!)
+        : await pickExternalFileName(newDir ?? '', lib.name)
+      const moved = await repo().moveLibrary(lib, newDir, fileName)
+      Object.assign(lib, { storagePath: moved.storagePath, fileName: moved.fileName })
+      return moved
+    },
     async remove(id: string) {
+      const lib = this.byId(id)
       this.libraries = this.libraries.filter((l) => l.id !== id)
-      await repo().remove(libFile(id))
+      if (lib) await repo().removeLibrary(lib)
+      else await repo().remove(libFile(id))
+    },
+    /** 外部库文件的绝对路径（设置页 / 库页展示用） */
+    describeLocation(lib: Library): string {
+      return isExternalLibrary(lib) ? externalLibraryPath(lib) : '软件数据文件夹'
+    },
+    /**
+     * 追加入库前预检：把草稿值按字段名映射到库字段后，
+     * 与现有条目比对身份键，区分完全重复与冲突。
+     * fields 是合并后的完整字段表（库字段 + 本次导入新增字段）。
+     */
+    planAppend(
+      id: string,
+      drafts: DraftEntry[],
+      sourceFields: FieldDef[],
+    ): { plan: AppendPlan; remapped: Record<string, string | number>[]; fields: FieldDef[] } {
+      const lib = this.byId(id)
+      if (!lib) return { plan: { duplicates: [], conflicts: [] }, remapped: [], fields: sourceFields }
+      const fields = Array.isArray(lib.fields) ? lib.fields : []
+
+      const byName = new Map<string, FieldDef>()
+      for (const f of fields) byName.set(normName(f.name), f)
+      const remap = new Map<string, FieldDef>()
+      const pending: FieldDef[] = []
+      for (const sf of sourceFields) {
+        const key = normName(sf.name)
+        if (key === '') continue
+        let target = byName.get(key)
+        if (!target) {
+          target = { ...sf }
+          pending.push(target)
+          byName.set(key, target)
+        }
+        remap.set(sf.id, target)
+      }
+      const allFields = [...fields, ...pending]
+
+      const existingKeys = new Map<string, Entry>()
+      for (const entry of lib.entries) {
+        const key = entryKey(entry.values, allFields)
+        if (key !== '') existingKeys.set(key, entry)
+      }
+
+      const remapped = drafts.map((d) => {
+        const values: Record<string, string | number> = {}
+        for (const [fid, v] of Object.entries(d.values)) {
+          const target = remap.get(fid)
+          if (target) values[target.id] = v
+        }
+        return values
+      })
+
+      const duplicates: AppendConflict[] = []
+      const conflicts: AppendConflict[] = []
+      remapped.forEach((values, index) => {
+        const key = entryKey(values, allFields)
+        if (key === '') return
+        const existing = existingKeys.get(key)
+        if (!existing) return
+        if (sameValues(values, existing.values, allFields)) {
+          duplicates.push({ index, existing, kind: 'duplicate' })
+        } else {
+          conflicts.push({ index, existing, kind: 'conflict' })
+        }
+      })
+      return { plan: { duplicates, conflicts }, remapped, fields: allFields }
     },
     /**
      * 把草稿条目并入库。草稿的值按「导入现场字段」的 id 记录，
      * 这里按字段名重映射到库自己的字段；库里没有的字段（新列）会补充进库字段表。
+     *
+     * 追加时的重复 / 冲突处理：身份键相同的条目视为重复 → 覆盖现有条目；
+     * 值存在差异的冲突项按 decisions 决定覆盖或跳过，未提供决定时跳过。
      */
     async addEntries(
       id: string,
       drafts: DraftEntry[],
       source: { fileName: string; kind: 'docx' | 'xlsx' | 'text' },
       sourceFields: FieldDef[] = [],
-    ): Promise<number> {
+      options: AppendOptions = {},
+    ): Promise<AppendResult> {
       const lib = this.byId(id)
-      if (!lib) return 0
+      if (!lib) return { added: 0, overwritten: 0, skipped: 0 }
       if (!Array.isArray(lib.fields)) lib.fields = []
 
       const byName = new Map<string, FieldDef>()
@@ -124,7 +295,16 @@ export const useLibrariesStore = defineStore('libraries', {
         remap.set(sf.id, target)
       }
 
-      const entries = drafts.map((d) => {
+      const existingKeys = new Map<string, Entry>()
+      for (const entry of lib.entries) {
+        const key = entryKey(entry.values, lib.fields)
+        if (key !== '') existingKeys.set(key, entry)
+      }
+
+      const fresh: Entry[] = []
+      const result: AppendResult = { added: 0, overwritten: 0, skipped: 0 }
+      const now = new Date().toISOString()
+      drafts.forEach((d, draftIndex) => {
         const entry = newEntry(id, d.sourceRef)
         for (const [fid, v] of Object.entries(d.values)) {
           const target = remap.get(fid)
@@ -133,17 +313,45 @@ export const useLibrariesStore = defineStore('libraries', {
           const c = d.confidence[fid]
           if (c !== undefined) entry.confidence[target.id] = c
         }
-        return entry
+        const key = entryKey(entry.values, lib.fields)
+        const existing = key === '' ? undefined : existingKeys.get(key)
+        if (!existing) {
+          fresh.push(entry)
+          if (key !== '') existingKeys.set(key, entry)
+          return
+        }
+        if (sameValues(entry.values, existing.values, lib.fields)) {
+          // 完全重复：默认覆盖（用导入内容刷新现有条目）
+          existing.values = { ...entry.values }
+          existing.confidence = { ...entry.confidence }
+          existing.sourceRef = entry.sourceRef
+          existing.updatedAt = now
+          result.overwritten++
+          return
+        }
+        const decision = options.decisions?.[draftIndex]
+        if (decision === 'overwrite') {
+          existing.values = { ...entry.values }
+          existing.confidence = { ...entry.confidence }
+          existing.sourceRef = entry.sourceRef
+          existing.updatedAt = now
+          result.overwritten++
+        } else {
+          result.skipped++
+        }
       })
-      lib.entries.push(...entries)
-      const existing = lib.sources.find((s) => s.fileName === source.fileName)
-      if (existing) {
-        existing.entryCount += entries.length
+
+      lib.entries.push(...fresh)
+      result.added = fresh.length
+      const existingSource = lib.sources.find((s) => s.fileName === source.fileName)
+      const total = result.added + result.overwritten
+      if (existingSource) {
+        existingSource.entryCount += total
       } else {
-        lib.sources.push({ ...source, importedAt: new Date().toISOString(), entryCount: entries.length })
+        lib.sources.push({ ...source, importedAt: now, entryCount: total })
       }
       persist(lib)
-      return entries.length
+      return result
     },
     updateEntry(id: string, entry: Entry) {
       const lib = this.byId(id)

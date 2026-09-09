@@ -57,6 +57,13 @@ describe('文本导出', () => {
     expect(lines[0]).toBe('主题\t日期')
     expect(lines[1]).toBe('八月周会\t2026-08-28')
   })
+  it('纯文本分节形式逐条罗列字段', () => {
+    const { content } = exportPlainText(library, template, entries, { fields: ['title', 'amount'] }, 'sections')
+    expect(content).toContain('1. 八月周会')
+    expect(content).toContain('金额：100')
+    expect(content).toContain('2. 九月启动会')
+    expect(content).not.toContain('\t')
+  })
   it('CSV 转义逗号、引号与换行，并带 BOM', () => {
     const weird = [entry({ title: '含,逗号', date: '2026-01-01', amount: 0 }), entry({ title: '含"引号"', date: '2026-01-02', amount: 0 })]
     const { content } = exportCsv(library, template, weird, { fields: ['title'] })

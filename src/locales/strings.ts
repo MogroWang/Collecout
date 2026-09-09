@@ -2,7 +2,7 @@
 export const t = {
   appName: '萃序',
   appNameEn: 'Collecout',
-  version: '0.2.0',
+  version: '0.3.0',
 
   nav: {
     libraries: '库',
@@ -31,6 +31,27 @@ export const t = {
     untitled: '未命名',
   },
 
+  titlebar: {
+    minimize: '最小化',
+    maximize: '最大化',
+    restore: '还原',
+    close: '关闭',
+  },
+
+  oobe: {
+    welcome: '欢迎使用萃序',
+    intro: '把 Word、Excel 和纯文本萃成结构化的信息库。开始之前，先决定数据放在哪里。',
+    locationTitle: '数据存放位置',
+    locationDesc: '库、模板和设置都会保存在这个文件夹里，之后可以随时在设置中更改。',
+    defaultOption: '默认位置（推荐）',
+    defaultOptionDesc: '跟随软件存放，便于备份和携带。',
+    customOption: '选择其他文件夹…',
+    notWritable: '该文件夹不可写，请换一个位置。',
+    pickFolder: '选择文件夹',
+    start: '开始使用',
+    starting: '正在准备…',
+  },
+
   home: {
     title: '库',
     import: '导入文件',
@@ -43,6 +64,12 @@ export const t = {
     newLibTitle: '新建库',
     newLibName: '库名称',
     newLibTemplate: '使用模板',
+    newLibLocation: '存放位置',
+    locationInner: '软件数据文件夹',
+    locationInnerDesc: '与其他库、模板、设置放在一起。',
+    locationCustom: '选择其他文件夹…',
+    locationCustomDesc: '库文件（.json）独立保存到你指定的位置。',
+    locationPicked: (p: string) => `将保存到 ${p}`,
     create: '创建',
   },
 
@@ -50,6 +77,10 @@ export const t = {
     table: '表格',
     cards: '卡片',
     filter: '筛选',
+    sort: '排序',
+    sortDefault: '默认顺序',
+    sortAsc: '升序',
+    sortDesc: '降序',
     export: '导出',
     entryCount: (n: number, total: number) => (n === total ? `共 ${total} 条` : `筛选出 ${n} / ${total} 条`),
     renameTitle: '重命名库',
@@ -61,10 +92,18 @@ export const t = {
     noMatch: '没有条目符合当前筛选',
     clearFilter: '清除筛选',
     selected: (n: number) => `已选 ${n} 条`,
+    clearSelection: '取消选择',
     selectAll: '全选',
+    selectAllHint: 'Ctrl+A 全选 · Esc 取消',
+    marqueeHint: '拖动框选条目',
     saved: '条目已保存',
     deleted: (n: number) => `已删除 ${n} 条条目`,
     addEntry: '添加条目',
+    location: '存放位置',
+    locationInner: '软件数据文件夹',
+    changeLocation: '更改位置',
+    locationChanged: (p: string) => `库已移动到 ${p}`,
+    locationMovedInner: '库已移回软件数据文件夹',
   },
 
   filterPanel: {
@@ -78,6 +117,12 @@ export const t = {
     contains: '包含文字',
     anyOf: '包含任一标签（用、分隔）',
     clear: '清除全部',
+  },
+
+  sortPanel: {
+    title: '排序方式',
+    none: '默认顺序（导入先后）',
+    clear: '恢复默认',
   },
 
   exportDialog: {
@@ -98,8 +143,15 @@ export const t = {
     fmtJsonDesc: '保留完整结构，便于程序处理',
     fmtFolder: '本地文件夹',
     fmtFolderDesc: '每个条目一个 Markdown 文件，附索引',
+    textStyle: '纯文本排版',
+    textTsv: '制表符分隔',
+    textTsvDesc: '首行表头，每行一条，适合粘贴到表格',
+    textSections: '分节形式',
+    textSectionsDesc: '每条一个小节，逐字段罗列',
     preview: '预览',
     doExport: '导出',
+    copyClipboard: '复制到剪贴板',
+    copied: '已复制到剪贴板',
     exportedTo: (p: string) => `已导出到 ${p}`,
     reveal: '在访达中显示',
     entriesUnit: '条',
@@ -133,8 +185,19 @@ export const t = {
     newLibrary: '新建库',
     appendTo: '追加到现有库',
     libName: '库名称',
+    newLibLocation: '新库存放位置',
+    locationInner: '软件数据文件夹',
+    locationCustom: '选择其他文件夹…',
+    locationPicked: (p: string) => `将保存到 ${p}`,
     finish: '完成导入',
     imported: (n: number, lib: string) => `已把 ${n} 条条目导入「${lib}」`,
+    importedDetail: (added: number, overwritten: number, skipped: number, lib: string) => {
+      const parts: string[] = []
+      if (added > 0) parts.push(`新增 ${added} 条`)
+      if (overwritten > 0) parts.push(`覆盖 ${overwritten} 条重复`)
+      if (skipped > 0) parts.push(`跳过 ${skipped} 条冲突`)
+      return `已导入「${lib}」：${parts.join('，') || '没有可导入的条目'}`
+    },
     reExtract: '重新提取',
     editCellHint: '点击浅色单元格可直接修改',
     sheet: '工作表',
@@ -145,14 +208,33 @@ export const t = {
     layoutLeft: '首列为标题栏（每列一条）',
     layoutResolvedTop: '按首行标题解析',
     layoutResolvedLeft: '按首列标题解析',
+    /* 冲突处理 */
+    dupTitle: '与库中现有条目比对',
+    dupSummary: (d: number, c: number) =>
+      d > 0 && c > 0
+        ? `发现 ${d} 条完全重复（将自动覆盖更新）和 ${c} 条内容冲突，请逐条确认。`
+        : d > 0
+          ? `发现 ${d} 条完全重复的条目，入库时会自动覆盖更新，无需处理。`
+          : `发现 ${c} 条内容冲突的条目（与现有条目标题相同但内容不同），请逐条确认。`,
+    conflictKeepExisting: '现有条目',
+    conflictIncoming: '本次导入',
+    conflictOverwrite: '覆盖',
+    conflictSkip: '跳过',
+    conflictEdit: '编辑',
+    conflictOverwriteAll: '全部覆盖',
+    conflictSkipAll: '全部跳过',
+    conflictEditTitle: '编辑冲突条目',
+    conflictEditDesc: '修改导入值后，该条目将按覆盖处理。',
+    noConflict: '没有发现重复或冲突，可直接完成导入。',
   },
 
   templates: {
     title: '模板',
     builtinGroup: '内置模板',
     mineGroup: '我的模板',
-    builtinNote: '内置模板不可直接修改，可复制一份成为我的模板。',
+    builtinNote: '内置模板不可直接修改。想调整字段？点击右上角「复制模板」得到一份可编辑的副本。',
     newTemplate: '新建模板',
+    duplicateHere: '复制模板',
     fields: '字段',
     fieldName: '字段名',
     fieldKind: '类型',
@@ -162,11 +244,14 @@ export const t = {
     testDesc: '粘贴一段样例文本，看看这个模板能提取出什么。',
     testRun: '提取一次',
     noFields: '模板还没有字段',
-    copied: '已复制为「{name}」',
+    copied: (name: string) => `已复制为「${name}」，可在「我的模板」中编辑`,
     kinds: { text: '文本', date: '日期', number: '数字', tag: '标签' },
     strategies: { auto: '自动', keyword: '关键词', regex: '正则', heading: '按标题分节', tableMap: '表格列' },
     patternPlaceholder: '正则表达式，如 评分[:：]\\s*(\\d)',
     keywordsPlaceholder: '附加关键词，用逗号分隔',
+    deleteTitle: '删除模板',
+    deleteDesc: (name: string) => `确定删除模板「${name}」？使用该模板的库不受影响，但模板本身无法恢复。`,
+    userOpsHint: '我的模板支持重命名（直接修改名称后保存）、复制与删除。',
   },
 
   settings: {
@@ -182,6 +267,16 @@ export const t = {
     dataLocation: '数据存储位置',
     dataLocalNote: '浏览器预览模式：数据保存在本页 localStorage，仅供开发调试。',
     dataAppNote: '安卓端：数据保存在应用专属目录 collecout-data 文件夹（Android/data/…/files/），卸载应用才会清除。',
+    changeLocation: '更改位置…',
+    changeLocationTitle: '更改数据存储位置',
+    changeLocationDesc: (p: string) =>
+      `当前数据保存在 ${p}。选择新位置后，现有数据（设置、模板、内部库）会先复制过去再切换；独立存放的库不受影响。原文件夹的数据会保留作为备份。`,
+    changeLocationPick: '选择新位置',
+    locationNotWritable: '所选文件夹不可写，请换一个位置。',
+    locationChanged: (p: string) => `数据已迁移到 ${p}`,
+    locationReset: '已恢复默认数据位置',
+    resetLocation: '恢复默认位置',
+    dataRootNote: '桌面端数据位置可自定义：首次启动时可选择，之后在这里更改。',
     openDataFolder: '打开数据文件夹',
     about: '关于',
     aboutLine: '萃序 Collecout · 把零散文档萃成有序的信息库',

@@ -1,3 +1,4 @@
+import { invoke } from '@tauri-apps/api/core'
 import { isDesktop, platform } from './platform'
 
 /**
@@ -7,14 +8,29 @@ import { isDesktop, platform } from './platform'
 export async function pickDirectory(): Promise<string | null> {
   if (!isDesktop()) return null
   const { open } = await import('@tauri-apps/plugin-dialog')
-  const picked = await open({ directory: true, title: '选择导出位置' })
-  return typeof picked === 'string' ? picked : null
+  const picked = await open({ directory: true, title: '选择文件夹' })
+  if (typeof picked !== 'string') return null
+  // 把用户选中的目录加入文件系统访问范围（含内部全部内容），否则后续写入会被 scope 拒绝
+  await extendFsScope(picked, true)
+  return picked
 }
 
 export async function pickSavePath(defaultName: string): Promise<string | null> {
   if (!isDesktop()) return null
   const { save } = await import('@tauri-apps/plugin-dialog')
-  return await save({ defaultPath: defaultName })
+  const picked = await save({ defaultPath: defaultName })
+  if (!picked) return null
+  await extendFsScope(picked, false)
+  return picked
+}
+
+/** 通过自定义 Rust 命令把路径登记进 tauri-plugin-fs 的运行时 scope */
+async function extendFsScope(path: string, isDir: boolean): Promise<void> {
+  try {
+    await invoke('extend_fs_scope', { path, isDir })
+  } catch {
+    /* 授权失败时写入可能仍被 dialog 插件的联动放行，交给后续写入的错误处理 */
+  }
 }
 
 export async function writeTextAbsolute(path: string, content: string): Promise<void> {
@@ -33,6 +49,35 @@ export async function revealInFinder(path: string, isDir: boolean): Promise<void
     await opener.openPath(path)
   } else {
     await opener.revealItemInDir(path)
+  }
+}
+
+/**
+ * 复制文本到系统剪贴板。优先用异步 Clipboard API，
+ * WebView 不提供时回退到隐藏文本域 + execCommand（Tauri 在部分平台非安全上下文）。
+ */
+export async function copyToClipboard(content: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(content)
+      return true
+    }
+  } catch {
+    /* 落到下面的兜底方案 */
+  }
+  try {
+    const ta = document.createElement('textarea')
+    ta.value = content
+    ta.style.position = 'fixed'
+    ta.style.opacity = '0'
+    document.body.appendChild(ta)
+    ta.focus()
+    ta.select()
+    const ok = document.execCommand('copy')
+    ta.remove()
+    return ok
+  } catch {
+    return false
   }
 }
 

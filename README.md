@@ -66,6 +66,11 @@ npx cap open android   # 在 Android Studio 中打包 APK
 
 0.1.0 存在旧位置（桌面 AppData / 安卓内部 Data 目录）的数据会在启动时自动迁移。
 
+自 0.3.0 起：
+
+- 桌面端**首次启动**会进入欢迎向导（OOBE），可把数据文件夹指到任意位置（默认仍跟随软件）；之后在设置页可随时更改，更改时现有数据会先复制到新位置再切换。
+- **单个库可以独立于数据文件夹存放**：新建库时选择「选择其他文件夹」，库文件（.json）直接落到你指定的目录；库页面可随时移动位置。外部库通过数据文件夹内的 `libraries/index.json` 登记，所在磁盘未挂载时该库自动隐藏。
+
 ## 持续构建
 
 推送或 PR 时，GitHub Actions（`.github/workflows/build.yml`）会自动构建三个产物并上传到 Actions Artifacts：

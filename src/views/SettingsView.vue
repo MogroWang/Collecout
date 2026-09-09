@@ -1,17 +1,30 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useSettingsStore } from '../stores/settings'
+import { useLibrariesStore } from '../stores/libraries'
+import { useTemplatesStore } from '../stores/templates'
 import { repo } from '../core/storage/repo'
 import { t } from '../locales/strings'
 import { isDesktop, platform } from '../lib/platform'
 import AppIcon from '../components/AppIcon.vue'
+import AppModal from '../components/AppModal.vue'
 
 const settings = useSettingsStore()
+const libraries = useLibrariesStore()
+const templates = useTemplatesStore()
+
 const dataPath = ref('')
+const defaultPath = ref('')
+const showChange = ref(false)
+const changing = ref(false)
+const changeError = ref('')
 
 if (isDesktop()) {
   void repo().adapter.describeRoot?.().then((p) => (dataPath.value = p))
+  void repo().describeDefaultRoot().then((p) => (defaultPath.value = p))
 }
+
+const isCustomRoot = computed(() => isDesktop() && defaultPath.value !== '' && dataPath.value !== defaultPath.value)
 
 const themeOptions = [
   { id: 'system', label: t.settings.themeSystem },
@@ -33,6 +46,47 @@ async function setTheme(id: 'system' | 'light' | 'dark') {
 async function openDataFolder() {
   const { revealInFinder } = await import('../lib/desktop')
   await revealInFinder(dataPath.value, true)
+}
+
+function beginChange() {
+  changeError.value = ''
+  showChange.value = true
+}
+
+async function pickNewRoot() {
+  const { pickDirectory } = await import('../lib/desktop')
+  changeError.value = ''
+  const dir = await pickDirectory()
+  if (!dir) return
+  if (dir === dataPath.value) {
+    showChange.value = false
+    return
+  }
+  if (!(await repo().canWriteAbs(dir))) {
+    changeError.value = t.settings.locationNotWritable
+    return
+  }
+  await applyNewRoot(dir)
+}
+
+async function applyNewRoot(dir: string | null) {
+  changing.value = true
+  try {
+    if (dir === null) {
+      // 恢复默认：先把数据复制回默认文件夹，再清掉自定义指针
+      await repo().copyDataTo(defaultPath.value)
+      await repo().setDataRoot(null)
+    } else {
+      await repo().copyDataTo(dir)
+    }
+    await Promise.all([settings.load(), libraries.load(), templates.load()])
+    dataPath.value = await (repo().adapter.describeRoot?.() ?? Promise.resolve(''))
+    showChange.value = false
+  } catch (err) {
+    changeError.value = err instanceof Error ? err.message : t.settings.locationNotWritable
+  } finally {
+    changing.value = false
+  }
 }
 </script>
 
@@ -82,8 +136,13 @@ async function openDataFolder() {
           <AppIcon name="folder" :size="14" />
           {{ t.settings.openDataFolder }}
         </button>
+        <button v-if="isDesktop() && dataPath" class="btn btn-sm" @click="beginChange">
+          <AppIcon name="pencil" :size="14" />
+          {{ t.settings.changeLocation }}
+        </button>
       </div>
-      <p class="hint row-note">库与模板以 JSON 文件保存在这里，可以直接备份或同步。</p>
+      <p v-if="isDesktop()" class="hint row-note">{{ t.settings.dataRootNote }}</p>
+      <p v-else class="hint row-note">库与模板以 JSON 文件保存在这里，可以直接备份或同步。</p>
     </section>
 
     <section class="group">
@@ -92,6 +151,33 @@ async function openDataFolder() {
       <p class="hint">{{ t.settings.aboutLine }}</p>
       <p class="hint">© 2026 MogroWang Studio · MIT License</p>
     </section>
+
+    <AppModal v-if="showChange" @close="!changing && (showChange = false)">
+      <header class="modal-head">
+        <h2>{{ t.settings.changeLocationTitle }}</h2>
+        <button class="icon-btn" :aria-label="t.common.close" @click="showChange = false"><AppIcon name="x" /></button>
+      </header>
+      <div class="modal-body">
+        <p class="hint">{{ t.settings.changeLocationDesc(dataPath) }}</p>
+        <p v-if="changeError" class="error meta">{{ changeError }}</p>
+      </div>
+      <footer class="modal-foot">
+        <button
+          v-if="isCustomRoot"
+          class="btn"
+          :disabled="changing"
+          @click="applyNewRoot(null)"
+        >
+          {{ t.settings.resetLocation }}
+        </button>
+        <span class="foot-spacer"></span>
+        <button class="btn" :disabled="changing" @click="showChange = false">{{ t.common.cancel }}</button>
+        <button class="btn btn-primary" :disabled="changing" @click="pickNewRoot">
+          <AppIcon name="folder" :size="15" />
+          {{ t.settings.changeLocationPick }}
+        </button>
+      </footer>
+    </AppModal>
   </div>
 </template>
 
@@ -125,6 +211,7 @@ async function openDataFolder() {
   align-items: center;
   gap: 12px;
   min-height: 32px;
+  flex-wrap: wrap;
 }
 
 .row > span:first-child {
@@ -145,6 +232,15 @@ async function openDataFolder() {
 
 .row-note {
   margin-top: 8px;
+}
+
+.error {
+  color: var(--danger);
+  margin-top: 10px;
+}
+
+.foot-spacer {
+  flex: 1;
 }
 
 .about-line {

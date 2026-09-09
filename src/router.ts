@@ -26,5 +26,10 @@ export const router = createRouter({
       name: 'settings',
       component: () => import('./views/SettingsView.vue'),
     },
+    {
+      path: '/oobe',
+      name: 'oobe',
+      component: () => import('./views/OobeView.vue'),
+    },
   ],
 })

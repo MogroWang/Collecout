@@ -1,14 +1,18 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ACCEPTED_EXTENSIONS } from '../core/parsers'
 import type { TableLayout } from '../core/extract'
-import { useImporterStore } from '../stores/importer'
-import { useLibrariesStore } from '../stores/libraries'
+import type { FieldDef } from '../core/models'
+import { useImporterStore, type ImportFileState } from '../stores/importer'
+import { useLibrariesStore, type AppendPlan, type ConflictDecision } from '../stores/libraries'
 import { useTemplatesStore } from '../stores/templates'
 import { useUiStore } from '../stores/ui'
+import { repo } from '../core/storage/repo'
 import { t } from '../locales/strings'
+import { isDesktop } from '../lib/platform'
 import AppIcon from '../components/AppIcon.vue'
+import AppModal from '../components/AppModal.vue'
 import ConfidenceBadge from '../components/ConfidenceBadge.vue'
 
 const route = useRoute()
@@ -44,7 +48,10 @@ const canNext = computed(() => {
     case 4:
       return importer.allDrafts.length > 0
     case 5:
-      return importer.targetMode === 'new' ? importer.newLibName.trim() !== '' || importer.files.length > 0 : importer.targetLibId !== ''
+      if (importer.targetMode === 'new') {
+        return (importer.newLibName.trim() !== '' || importer.files.length > 0) && newLocationReady.value
+      }
+      return importer.targetLibId !== ''
     default:
       return false
   }
@@ -97,12 +104,147 @@ function reExtract() {
   importer.extractAll()
 }
 
+/* ---------- 步骤 5：新库位置 + 追加冲突检测 ---------- */
+
+/** 新建库的存放位置 radio 代理（'inner' / 'custom'） */
+const newLocMode = ref<'inner' | 'custom'>('inner')
+const newLocationReady = computed(() => newLocMode.value === 'inner' || importer.newLibDir !== '')
+
+async function pickNewLibLocation() {
+  const { pickDirectory } = await import('../lib/desktop')
+  const dir = await pickDirectory()
+  if (!dir) return
+  if (!(await repo().canWriteAbs(dir))) {
+    ui.toast(t.settings.locationNotWritable, 'danger')
+    return
+  }
+  importer.newLibDir = dir
+}
+
+/** 每个文件的重复 / 冲突预检结果 */
+interface FileAppendPlan {
+  file: ImportFileState
+  plan: AppendPlan
+  remapped: Record<string, string | number>[]
+  fields: FieldDef[]
+}
+
+const appendPlans = ref<Map<string, FileAppendPlan>>(new Map())
+/** 冲突处理决定：fileId → (draft 下标 → 决定)，默认覆盖 */
+const decisions = ref<Record<string, Record<number, ConflictDecision>>>({})
+/** 正在编辑的冲突条目 */
+const editing = ref<{ fileId: string; index: number } | null>(null)
+const editValues = ref<Record<string, string>>({})
+
+watch(
+  () => [importer.targetMode, importer.targetLibId, importer.allDrafts.length, step.value] as const,
+  () => rebuildPlans(),
+  { immediate: true },
+)
+
+function rebuildPlans() {
+  if (importer.targetMode !== 'append' || !importer.targetLibId || step.value < 5) {
+    appendPlans.value = new Map()
+    return
+  }
+  const map = new Map<string, FileAppendPlan>()
+  const nextDecisions: Record<string, Record<number, ConflictDecision>> = {}
+  const prev = decisions.value
+  for (const f of importer.files) {
+    if (!f.doc || f.drafts.length === 0) continue
+    const { plan, remapped, fields } = libraries.planAppend(importer.targetLibId, f.drafts, f.inferred?.fields ?? [])
+    if (plan.duplicates.length + plan.conflicts.length === 0) continue
+    map.set(f.id, { file: f, plan, remapped, fields })
+    const fileDecisions: Record<number, ConflictDecision> = {}
+    for (const c of plan.conflicts) {
+      fileDecisions[c.index] = prev[f.id]?.[c.index] ?? 'overwrite'
+    }
+    nextDecisions[f.id] = fileDecisions
+  }
+  decisions.value = nextDecisions
+  appendPlans.value = map
+}
+
+const totalDuplicates = computed(() => [...appendPlans.value.values()].reduce((n, p) => n + p.plan.duplicates.length, 0))
+const totalConflicts = computed(() => [...appendPlans.value.values()].reduce((n, p) => n + p.plan.conflicts.length, 0))
+const hasCompare = computed(() => importer.targetMode === 'append' && importer.targetLibId !== '' && (totalDuplicates.value > 0 || totalConflicts.value > 0))
+
+function entryTitleOf(plan: FileAppendPlan, values: Record<string, string | number>): string {
+  const field = plan.fields.find((f) => f.kind === 'text' && /标题|主题|题目|书名|项目|name|title/i.test(f.name)) ?? plan.fields.find((f) => f.kind === 'text')
+  const v = field ? values[field.id] : undefined
+  const s = v === undefined ? '' : String(v).trim()
+  return s === '' ? t.common.untitled : s.split(/\r?\n/)[0].slice(0, 40)
+}
+
+/** 冲突条目里值有差异的字段 */
+function diffFields(plan: FileAppendPlan, index: number, existingValues: Record<string, string | number>): { field: FieldDef; from: string; to: string }[] {
+  const incoming = plan.remapped[index]
+  const out: { field: FieldDef; from: string; to: string }[] = []
+  for (const field of plan.fields) {
+    const a = existingValues[field.id]
+    const b = incoming[field.id]
+    const same = (a === undefined || String(a) === '') === (b === undefined || String(b) === '') &&
+      (a === undefined || String(a) === '' || String(a) === String(b))
+    if (!same) out.push({ field, from: a === undefined ? '' : String(a), to: b === undefined ? '' : String(b) })
+  }
+  return out
+}
+
+function openEdit(plan: FileAppendPlan, fileId: string, index: number) {
+  editing.value = { fileId, index }
+  const incoming = plan.remapped[index]
+  const values: Record<string, string> = {}
+  for (const field of plan.fields) {
+    const v = incoming[field.id]
+    values[field.id] = v === undefined ? '' : String(v)
+  }
+  editValues.value = values
+}
+
+/** 保存冲突编辑：把修改写回对应文件的草稿值，再重新比对 */
+function saveEdit() {
+  if (!editing.value) return
+  const plan = appendPlans.value.get(editing.value.fileId)
+  if (!plan) {
+    editing.value = null
+    return
+  }
+  const draft = plan.file.drafts[editing.value.index]
+  const sourceFields = plan.file.inferred?.fields ?? []
+  for (const sf of sourceFields) {
+    // 该源字段按名字映射到的库字段，就是编辑面板里对应的输入框
+    const target = plan.fields.find((f) => f.name.replace(/\s+/g, '').toLowerCase() === sf.name.replace(/\s+/g, '').toLowerCase())
+    if (!target) continue
+    const nextValue = editValues.value[target.id]
+    if (nextValue !== undefined) draft.values[sf.id] = nextValue
+  }
+  editing.value = null
+  rebuildPlans()
+}
+
+function setDecision(fileId: string, index: number, decision: ConflictDecision) {
+  if (!decisions.value[fileId]) decisions.value[fileId] = {}
+  decisions.value[fileId][index] = decision
+}
+
+function setAllDecisions(decision: ConflictDecision) {
+  for (const [fileId, plan] of appendPlans.value) {
+    if (!decisions.value[fileId]) decisions.value[fileId] = {}
+    for (const c of plan.plan.conflicts) decisions.value[fileId][c.index] = decision
+  }
+}
+
 async function finish() {
   busy.value = true
   try {
-    const result = await importer.commit()
+    const storageDir = importer.targetMode === 'new' && newLocMode.value === 'custom' ? importer.newLibDir : null
+    const result = await importer.commit(decisions.value, storageDir)
     if (result) {
-      ui.toast(t.import.imported(result.count, libraries.byId(result.libraryId)?.name ?? ''))
+      if (importer.targetMode === 'append' && (result.overwritten > 0 || result.skipped > 0)) {
+        ui.toast(t.import.importedDetail(result.added, result.overwritten, result.skipped, libraries.byId(result.libraryId)?.name ?? ''))
+      } else {
+        ui.toast(t.import.imported(result.count, libraries.byId(result.libraryId)?.name ?? ''))
+      }
       importer.reset()
       router.push(`/library/${result.libraryId}`)
     }
@@ -332,7 +474,71 @@ async function finish() {
             <option v-for="lib in libraries.libraries" :key="lib.id" :value="lib.id">{{ lib.name }}（{{ lib.entries.length }} 条）</option>
           </select>
         </label>
+
+        <!-- 新建库：存放位置（桌面端） -->
+        <div v-if="importer.targetMode === 'new' && isDesktop()" class="loc-block">
+          <span class="loc-label">{{ t.import.newLibLocation }}</span>
+          <label class="loc-row">
+            <input v-model="newLocMode" type="radio" value="inner" />
+            <span class="loc-name">{{ t.import.locationInner }}</span>
+          </label>
+          <label class="loc-row">
+            <input v-model="newLocMode" type="radio" value="custom" />
+            <span class="loc-name">{{ importer.newLibDir || t.import.locationCustom }}</span>
+          </label>
+          <button v-if="newLocMode === 'custom'" class="btn btn-sm" @click="pickNewLibLocation">
+            <AppIcon name="folder" :size="14" />
+            {{ t.oobe.pickFolder }}
+          </button>
+        </div>
       </div>
+
+      <!-- 追加时的重复 / 冲突比对 -->
+      <div v-if="hasCompare" class="card compare-card">
+        <header class="compare-head">
+          <AppIcon name="warning" :size="16" class="compare-icon" />
+          <strong>{{ t.import.dupTitle }}</strong>
+        </header>
+        <p class="hint">{{ t.import.dupSummary(totalDuplicates, totalConflicts) }}</p>
+
+        <div v-for="[fileId, p] in appendPlans" :key="fileId" class="compare-file">
+          <p class="meta compare-file-name">{{ p.file.file.name }}</p>
+
+          <div v-for="c in p.plan.conflicts" :key="c.index" class="conflict-row">
+            <div class="conflict-main">
+              <span class="conflict-title">{{ entryTitleOf(p, p.remapped[c.index]) }}</span>
+              <div class="seg seg-sm">
+                <button :class="{ on: decisions[fileId]?.[c.index] === 'overwrite' }" @click="setDecision(fileId, c.index, 'overwrite')">
+                  {{ t.import.conflictOverwrite }}
+                </button>
+                <button :class="{ on: decisions[fileId]?.[c.index] === 'skip' }" @click="setDecision(fileId, c.index, 'skip')">
+                  {{ t.import.conflictSkip }}
+                </button>
+              </div>
+              <button class="btn btn-ghost btn-sm" @click="openEdit(p, fileId, c.index)">
+                <AppIcon name="pencil" :size="13" />
+                {{ t.import.conflictEdit }}
+              </button>
+            </div>
+            <ul class="diff-list">
+              <li v-for="d in diffFields(p, c.index, c.existing.values)" :key="d.field.id">
+                <span class="diff-name">{{ d.field.name }}</span>
+                <span class="diff-old">{{ d.from || '—' }}</span>
+                <AppIcon name="chevron-right" :size="12" class="diff-arrow" />
+                <span class="diff-new">{{ d.to || '—' }}</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <footer v-if="totalConflicts > 0" class="compare-foot">
+          <button class="btn btn-ghost btn-sm" @click="setAllDecisions('overwrite')">{{ t.import.conflictOverwriteAll }}</button>
+          <button class="btn btn-ghost btn-sm" @click="setAllDecisions('skip')">{{ t.import.conflictSkipAll }}</button>
+        </footer>
+      </div>
+      <p v-else-if="importer.targetMode === 'append' && importer.targetLibId" class="hint compare-clear">
+        {{ t.import.noConflict }}
+      </p>
     </section>
 
     <footer class="wizard-foot">
@@ -343,6 +549,28 @@ async function finish() {
         {{ t.import.finish }}
       </button>
     </footer>
+
+    <!-- 冲突条目编辑 -->
+    <AppModal v-if="editing" @close="editing = null">
+      <header class="modal-head">
+        <h2>{{ t.import.conflictEditTitle }}</h2>
+        <button class="icon-btn" :aria-label="t.common.close" @click="editing = null"><AppIcon name="x" /></button>
+      </header>
+      <div class="modal-body">
+        <p class="hint">{{ t.import.conflictEditDesc }}</p>
+        <div v-for="field in appendPlans.get(editing.fileId)?.fields ?? []" :key="field.id" class="form-row edit-row">
+          <label>{{ field.name }}</label>
+          <input v-model="editValues[field.id]" class="input" type="text" />
+          <p class="hint">{{ t.import.conflictKeepExisting }}：
+            {{ (appendPlans.get(editing.fileId)?.plan.conflicts.find((c) => c.index === editing!.index)?.existing.values[field.id] ?? '') || '—' }}
+          </p>
+        </div>
+      </div>
+      <footer class="modal-foot">
+        <button class="btn" @click="editing = null">{{ t.common.cancel }}</button>
+        <button class="btn btn-primary" @click="saveEdit">{{ t.common.save }}</button>
+      </footer>
+    </AppModal>
   </div>
 </template>
 
@@ -625,6 +853,162 @@ async function finish() {
 .target-row .input,
 .target-row .select {
   flex: 1;
+}
+
+/* 新库位置 */
+.loc-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--hairline);
+}
+
+.loc-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.loc-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 6px 10px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-s);
+}
+
+.loc-row:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.loc-name {
+  font-weight: 500;
+  font-size: 12.5px;
+  word-break: break-all;
+}
+
+/* 冲突比对 */
+.compare-card {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.compare-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.compare-icon {
+  color: var(--warn);
+}
+
+.compare-file {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.compare-file-name {
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.conflict-row {
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-s);
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.conflict-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.conflict-title {
+  flex: 1;
+  min-width: 0;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.seg-sm button {
+  height: 24px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.diff-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.diff-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  min-width: 0;
+}
+
+.diff-name {
+  flex: none;
+  width: 84px;
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diff-old {
+  color: var(--ink-3);
+  text-decoration: line-through;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 200px;
+}
+
+.diff-arrow {
+  color: var(--ink-3);
+  flex: none;
+}
+
+.diff-new {
+  color: var(--ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 220px;
+}
+
+.compare-foot {
+  display: flex;
+  gap: 8px;
+}
+
+.compare-clear {
+  padding: 4px 2px;
+}
+
+.edit-row {
+  margin-bottom: 12px;
 }
 
 .wizard-foot {

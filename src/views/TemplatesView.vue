@@ -7,6 +7,7 @@ import { useTemplatesStore } from '../stores/templates'
 import { useUiStore } from '../stores/ui'
 import { t } from '../locales/strings'
 import AppIcon from '../components/AppIcon.vue'
+import AppModal from '../components/AppModal.vue'
 import EmptyState from '../components/EmptyState.vue'
 
 const store = useTemplatesStore()
@@ -29,6 +30,7 @@ watch(
 
 const isBuiltin = computed(() => draft.builtin)
 const dirty = computed(() => JSON.stringify(draft) !== JSON.stringify(store.byId(selectedId.value) ?? null))
+const showDeleteConfirm = ref(false)
 
 function select(id: string) {
   selectedId.value = id
@@ -72,19 +74,22 @@ async function save() {
   ui.toast(t.toast.templateSaved)
 }
 
-async function duplicateBuiltin() {
-  const copy = await store.duplicateBuiltin(draft.id)
+async function duplicateCurrent() {
+  if (draft.id === '') return
+  const copy = await store.duplicate(draft.id)
   if (copy) {
-    ui.toast(t.toast.templateSaved)
+    ui.toast(t.templates.copied(copy.name))
     selectedId.value = copy.id
   }
 }
 
-async function removeTemplate() {
-  if (isBuiltin.value) return
-  await store.remove(draft.id)
-  ui.toast(t.toast.templateDeleted)
-  selectedId.value = store.all[0]?.id ?? ''
+function removeTemplate() {
+  showDeleteConfirm.value = false
+  void (async () => {
+    await store.remove(draft.id)
+    ui.toast(t.toast.templateDeleted)
+    selectedId.value = store.all[0]?.id ?? ''
+  })()
 }
 
 function runTest() {
@@ -129,10 +134,16 @@ function strategyName(s: ExtractStrategy): string {
   <div class="page">
     <header class="page-head">
       <h1 class="large-title">{{ t.templates.title }}</h1>
-      <button class="btn btn-primary" @click="newTemplate">
-        <AppIcon name="plus" :size="15" />
-        {{ t.templates.newTemplate }}
-      </button>
+      <div class="head-actions">
+        <button class="btn" :disabled="draft.id === ''" @click="duplicateCurrent">
+          <AppIcon name="copy" :size="15" />
+          {{ t.templates.duplicateHere }}
+        </button>
+        <button class="btn btn-primary" @click="newTemplate">
+          <AppIcon name="plus" :size="15" />
+          {{ t.templates.newTemplate }}
+        </button>
+      </div>
     </header>
 
     <div class="layout">
@@ -204,17 +215,25 @@ function strategyName(s: ExtractStrategy): string {
 
           <div class="editor-foot">
             <template v-if="isBuiltin">
-              <button class="btn" @click="duplicateBuiltin">
+              <span class="hint foot-hint">{{ t.templates.builtinNote }}</span>
+              <button class="btn" @click="duplicateCurrent">
                 <AppIcon name="copy" :size="15" />
                 {{ t.common.duplicate }}
               </button>
             </template>
             <template v-else>
-              <button class="btn btn-danger" @click="removeTemplate">
-                <AppIcon name="trash" :size="15" />
-                {{ t.common.delete }}
-              </button>
-              <button class="btn btn-primary" :disabled="!dirty" @click="save">{{ t.common.save }}</button>
+              <span class="hint foot-hint">{{ t.templates.userOpsHint }}</span>
+              <span class="foot-ops">
+                <button class="btn btn" @click="duplicateCurrent">
+                  <AppIcon name="copy" :size="15" />
+                  {{ t.common.duplicate }}
+                </button>
+                <button class="btn btn-danger" @click="showDeleteConfirm = true">
+                  <AppIcon name="trash" :size="15" />
+                  {{ t.common.delete }}
+                </button>
+                <button class="btn btn-primary" :disabled="!dirty" @click="save">{{ t.common.save }}</button>
+              </span>
             </template>
           </div>
 
@@ -232,6 +251,24 @@ function strategyName(s: ExtractStrategy): string {
         </template>
       </section>
     </div>
+
+    <!-- 删除模板的二次确认 -->
+    <AppModal v-if="showDeleteConfirm" @close="showDeleteConfirm = false">
+      <header class="modal-head">
+        <h2>{{ t.templates.deleteTitle }}</h2>
+        <button class="icon-btn" :aria-label="t.common.close" @click="showDeleteConfirm = false"><AppIcon name="x" /></button>
+      </header>
+      <div class="modal-body">
+        <p>{{ t.templates.deleteDesc(draft.name) }}</p>
+      </div>
+      <footer class="modal-foot">
+        <button class="btn" @click="showDeleteConfirm = false">{{ t.common.cancel }}</button>
+        <button class="btn btn-danger" @click="removeTemplate">
+          <AppIcon name="trash" :size="15" />
+          {{ t.common.delete }}
+        </button>
+      </footer>
+    </AppModal>
   </div>
 </template>
 
@@ -246,6 +283,22 @@ function strategyName(s: ExtractStrategy): string {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 20px;
+}
+
+.head-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.editor-foot .foot-hint {
+  flex: 1;
+  min-width: 0;
+  padding-right: 12px;
+}
+
+.editor-foot .foot-ops {
+  display: flex;
+  gap: 8px;
 }
 
 .layout {

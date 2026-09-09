@@ -39,13 +39,15 @@ export const useTemplatesStore = defineStore('templates', {
       this.user = this.user.filter((x) => x.id !== id)
       await repo().remove(templateFile(id))
     },
-    async duplicateBuiltin(id: string): Promise<Template | null> {
-      const source = BUILTIN_TEMPLATES.find((t) => t.id === id)
+    /** 复制任意模板（内置或用户）为「我的模板」副本 */
+    async duplicate(id: string): Promise<Template | null> {
+      const source = this.all.find((t) => t.id === id)
       if (!source) return null
+      const baseName = source.name.replace(/（副本\d*）$/, '')
       const copy: Template = {
         ...structuredClone(source),
         id: crypto.randomUUID(),
-        name: `${source.name}（副本）`,
+        name: `${baseName}（副本）`,
         builtin: false,
       }
       this.user.push(copy)

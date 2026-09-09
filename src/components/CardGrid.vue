@@ -4,9 +4,13 @@ import type { Entry, FieldDef } from '../core/models'
 const props = defineProps<{
   fields: FieldDef[]
   entries: Entry[]
+  selected: Set<string>
 }>()
 
-const emit = defineEmits<{ open: [id: string] }>()
+const emit = defineEmits<{
+  open: [id: string]
+  select: [id: string, index: number, mod: { shift: boolean; meta: boolean }]
+}>()
 
 function titleField(): FieldDef | undefined {
   return props.fields.find((f) => f.kind === 'text')
@@ -21,11 +25,43 @@ function value(field: FieldDef, entry: Entry): string {
   const v = entry.values[field.id]
   return v === undefined ? '' : String(v)
 }
+
+/** 卡片点击：多选模式下切换选中（支持 Shift / Ctrl），否则打开条目详情 */
+function onCardClick(entry: Entry, index: number, e: MouseEvent) {
+  const multi = props.selected.size > 0
+  if (multi || e.shiftKey || e.ctrlKey || e.metaKey) {
+    emit('select', entry.id, index, { shift: e.shiftKey, meta: e.ctrlKey || e.metaKey })
+  } else {
+    emit('open', entry.id)
+  }
+}
+
+function onCheck(entry: Entry, index: number, e: Event) {
+  emit('select', entry.id, index, {
+    shift: (e as MouseEvent).shiftKey,
+    meta: (e as MouseEvent).ctrlKey || (e as MouseEvent).metaKey,
+  })
+}
 </script>
 
 <template>
   <div class="card-grid">
-    <article v-for="entry in props.entries" :key="entry.id" class="card clickable entry-card" @click="emit('open', entry.id)">
+    <article
+      v-for="(entry, i) in props.entries"
+      :key="entry.id"
+      class="card clickable entry-card"
+      :class="{ 'entry-selected': props.selected.has(entry.id) }"
+      :data-entry-id="entry.id"
+      @click="onCardClick(entry, i, $event)"
+    >
+      <label v-if="props.selected.size > 0 || props.selected.has(entry.id)" class="card-check" @click.stop>
+        <input
+          type="checkbox"
+          :checked="props.selected.has(entry.id)"
+          :aria-label="`选择 ${entry.id}`"
+          @change="onCheck(entry, i, $event)"
+        />
+      </label>
       <header class="card-head">
         <h3 class="card-title">{{ value(titleField() ?? ({ name: '条目' } as FieldDef), entry) || '未命名' }}</h3>
         <span v-if="entry.sourceRef.fileName" class="meta">{{ entry.sourceRef.fileName }}</span>
@@ -53,7 +89,33 @@ function value(field: FieldDef, entry: Entry): string {
 }
 
 .entry-card {
+  position: relative;
   padding: 14px 16px;
+}
+
+.entry-card.entry-selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.card-check {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  cursor: pointer;
+}
+
+.card-check input {
+  accent-color: var(--accent);
+  margin: 0;
 }
 
 .card-head {

@@ -72,6 +72,8 @@ export const useImporterStore = defineStore('importer', {
     templateId: AUTO_ID as string | null,
     targetMode: 'new' as 'new' | 'append',
     newLibName: '',
+    /** 新建库时的独立存放目录（null = 软件数据文件夹） */
+    newLibDir: null as string | null,
     targetLibId: '',
     busy: false,
   }),
@@ -95,6 +97,7 @@ export const useImporterStore = defineStore('importer', {
       this.templateId = AUTO_ID
       this.targetMode = 'new'
       this.newLibName = ''
+      this.newLibDir = null
       this.targetLibId = ''
       this.busy = false
     },
@@ -230,7 +233,14 @@ export const useImporterStore = defineStore('importer', {
       const list = this.files.filter((f) => f.inferred).map((f) => (f as ImportFileState).inferred!.fields)
       return mergeFieldsByName(list)
     },
-    async commit(): Promise<{ libraryId: string; count: number } | null> {
+    /**
+     * 入库。新建库时可用 storageDir 指定独立存放位置；
+     * 追加时通过 decisions 传递每个文件的冲突条目处理决定（draft 下标 → 覆盖/跳过）。
+     */
+    async commit(
+      decisions: Record<string, Record<number, 'overwrite' | 'skip'>> = {},
+      storageDir: string | null = null,
+    ): Promise<{ libraryId: string; count: number; added: number; overwritten: number; skipped: number } | null> {
       const libraries = useLibrariesStore()
       const drafts = this.allDrafts
       if (drafts.length === 0) return null
@@ -239,17 +249,26 @@ export const useImporterStore = defineStore('importer', {
       if (this.targetMode === 'new') {
         const first = this.files.find((f) => f.doc !== null)
         const name = this.newLibName.trim() || first?.doc?.fileName.replace(/\.[^.]+$/, '') || '未命名库'
-        const lib = await libraries.create(name, this.templateId ?? AUTO_ID, this.mergedFields())
+        const lib = await libraries.create(name, this.templateId ?? AUTO_ID, this.mergedFields(), storageDir)
         libId = lib.id
       }
       if (!libId) return null
 
-      let count = 0
+      const total = { added: 0, overwritten: 0, skipped: 0 }
       for (const f of this.files) {
         if (f.drafts.length === 0 || !f.doc) continue
-        count += await libraries.addEntries(libId, f.drafts, { fileName: f.doc.fileName, kind: f.doc.kind }, f.inferred?.fields ?? [])
+        const r = await libraries.addEntries(
+          libId,
+          f.drafts,
+          { fileName: f.doc.fileName, kind: f.doc.kind },
+          f.inferred?.fields ?? [],
+          { decisions: decisions[f.id] },
+        )
+        total.added += r.added
+        total.overwritten += r.overwritten
+        total.skipped += r.skipped
       }
-      return { libraryId: libId, count }
+      return { libraryId: libId, count: total.added + total.overwritten, ...total }
     },
   },
 })
