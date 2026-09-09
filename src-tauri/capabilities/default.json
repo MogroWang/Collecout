@@ -1,0 +1,20 @@
+{
+  "identifier": "default",
+  "description": "萃序桌面端默认能力：应用数据读写、文件对话框、访达定位",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "dialog:default",
+    "fs:default",
+    "fs:allow-appdata-read-recursive",
+    "fs:allow-appdata-write-recursive",
+    "fs:allow-mkdir",
+    "fs:allow-remove",
+    "fs:allow-exists",
+    "fs:allow-read-dir",
+    "fs:allow-read-file",
+    "fs:allow-write-file",
+    "opener:default",
+    "opener:allow-reveal-item-in-dir"
+  ]
+}

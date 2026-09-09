@@ -1,0 +1,22 @@
+node_modules/
+dist/
+coverage/
+
+# Tauri
+src-tauri/target/
+src-tauri/gen/
+
+# Capacitor / Android
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+android/captures/
+android/*.iml
+
+# 系统 / 编辑器
+.DS_Store
+*.log
+*.local
+.zcode/

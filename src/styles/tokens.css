@@ -1,0 +1,57 @@
+/* 萃序设计令牌：单一墨青强调色 + 纸白/墨两级中性色，层级靠字号字重与留白表达 */
+:root {
+  --bg: #f4f3f0;
+  --surface: #ffffff;
+  --surface-2: #edece8;
+  --elevated: #ffffff;
+  --ink: #1d1d1f;
+  --ink-2: #6f6e73;
+  --ink-3: #a6a5aa;
+  --hairline: rgba(0, 0, 0, 0.08);
+  --hairline-strong: rgba(0, 0, 0, 0.14);
+  --accent: #0e6f63;
+  --accent-hover: #0b5d53;
+  --accent-ink: #ffffff;
+  --accent-soft: rgba(14, 111, 99, 0.1);
+  --accent-soft-2: rgba(14, 111, 99, 0.17);
+  --warn: #9a5b00;
+  --warn-bg: rgba(154, 91, 0, 0.12);
+  --danger: #b3261e;
+  --danger-soft: rgba(179, 38, 30, 0.1);
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.05), 0 4px 16px rgba(0, 0, 0, 0.06);
+  --shadow-2: 0 12px 40px rgba(0, 0, 0, 0.16);
+  --scrim: rgba(0, 0, 0, 0.32);
+  --r-s: 7px;
+  --r-m: 11px;
+  --r-l: 16px;
+  --ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
+  --dur: 220ms;
+  --sidebar-w: 232px;
+  --font:
+    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC', 'Hiragino Sans GB',
+    'Segoe UI', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif;
+}
+
+:root[data-theme='dark'] {
+  --bg: #1b1b1d;
+  --surface: #262628;
+  --surface-2: #2f2f32;
+  --elevated: #2c2c2e;
+  --ink: #f2f2f4;
+  --ink-2: #a2a1a8;
+  --ink-3: #6f6e76;
+  --hairline: rgba(255, 255, 255, 0.1);
+  --hairline-strong: rgba(255, 255, 255, 0.18);
+  --accent: #4fb8a5;
+  --accent-hover: #63c4b2;
+  --accent-ink: #0b2b26;
+  --accent-soft: rgba(79, 184, 165, 0.14);
+  --accent-soft-2: rgba(79, 184, 165, 0.24);
+  --warn: #e0a04e;
+  --warn-bg: rgba(224, 160, 78, 0.16);
+  --danger: #e5645c;
+  --danger-soft: rgba(229, 100, 92, 0.14);
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 16px rgba(0, 0, 0, 0.35);
+  --shadow-2: 0 12px 40px rgba(0, 0, 0, 0.5);
+  --scrim: rgba(0, 0, 0, 0.5);
+}

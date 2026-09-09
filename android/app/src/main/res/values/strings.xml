@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">萃序</string>
+    <string name="title_activity_main">萃序</string>
+    <string name="package_name">com.mogrowang.collecout</string>
+    <string name="custom_url_scheme">com.mogrowang.collecout</string>
+</resources>
