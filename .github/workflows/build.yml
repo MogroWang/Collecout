@@ -118,7 +118,8 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 17
+          # Capacitor 7 的安卓模块按 Java 21 编译，JDK 17 会报“无效的源发行版：21”
+          java-version: 21
 
       - uses: gradle/actions/setup-gradle@v4
 
