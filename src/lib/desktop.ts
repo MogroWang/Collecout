@@ -52,6 +52,16 @@ export async function revealInFinder(path: string, isDir: boolean): Promise<void
   }
 }
 
+/** 用系统浏览器打开链接：桌面端走 opener 插件，其他平台开新标签页 */
+export async function openInBrowser(url: string): Promise<void> {
+  if (isDesktop()) {
+    const opener = await import('@tauri-apps/plugin-opener')
+    await opener.openUrl(url)
+  } else {
+    window.open(url, '_blank')
+  }
+}
+
 /**
  * 复制文本到系统剪贴板。优先用异步 Clipboard API，
  * WebView 不提供时回退到隐藏文本域 + execCommand（Tauri 在部分平台非安全上下文）。

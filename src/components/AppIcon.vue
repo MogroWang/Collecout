@@ -31,6 +31,7 @@ const icons = {
   sort: '<path d="M7 20V7"/><path d="m4 10 3-3 3 3"/><path d="M17 4v13"/><path d="m14 14 3 3 3-3"/>',
   'arrow-left': '<path d="M19 12H5"/><path d="m11 18-6-6 6-6"/>',
   copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/>',
+  refresh: '<path d="M21 12a9 9 0 1 1-2.6-6.3"/><path d="M21 3v6h-6"/>',
 } as const
 
 type IconName = keyof typeof icons

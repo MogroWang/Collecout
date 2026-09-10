@@ -87,7 +87,9 @@ async function closeWindow() {
         <!-- 桌面侧栏 -->
         <aside v-if="!mobile" class="sidebar">
           <div class="brand">
-            <img src="/logo-text.svg" alt="" class="brand-logo" />
+            <RouterLink to="/" class="brand-logo-link" :aria-label="t.nav.libraries">
+              <img src="/logo-text.svg" alt="" class="brand-logo" />
+            </RouterLink>
           </div>
 
           <nav class="side-nav">
@@ -125,7 +127,9 @@ async function closeWindow() {
 
         <!-- 移动端顶栏 -->
         <header v-if="mobile" class="m-topbar">
-          <img src="/logo-text.svg" alt="" class="m-logo" />
+          <RouterLink to="/" class="m-logo-link" :aria-label="t.nav.libraries">
+            <img src="/logo-text.svg" alt="" class="m-logo" />
+          </RouterLink>
         </header>
 
         <main class="main">
@@ -251,8 +255,22 @@ async function closeWindow() {
   padding: 6px 8px 14px;
 }
 
+.brand-logo-link {
+  display: inline-flex;
+  border-radius: 6px;
+  transition: opacity 150ms ease, transform 120ms ease-out;
+}
+
+.brand-logo-link:hover {
+  opacity: 0.8;
+}
+
+.brand-logo-link:active {
+  transform: scale(0.97);
+}
+
 .brand-logo {
-  height: 21px;
+  height: 28px;
   width: auto;
   display: block;
 }
@@ -376,8 +394,22 @@ async function closeWindow() {
   border-bottom: 1px solid var(--hairline);
 }
 
+.m-logo-link {
+  display: inline-flex;
+  border-radius: 6px;
+  transition: opacity 150ms ease, transform 120ms ease-out;
+}
+
+.m-logo-link:hover {
+  opacity: 0.8;
+}
+
+.m-logo-link:active {
+  transform: scale(0.97);
+}
+
 .m-logo {
-  height: 17px;
+  height: 28px;
   width: auto;
   display: block;
 }

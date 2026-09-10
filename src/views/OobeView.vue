@@ -167,7 +167,6 @@ async function start() {
 .hero-icon {
   width: 56px;
   height: 56px;
-  border-radius: 14px;
   margin-bottom: 4px;
 }
 

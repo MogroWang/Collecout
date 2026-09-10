@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { useSettingsStore } from '../stores/settings'
 import { useLibrariesStore } from '../stores/libraries'
 import { useTemplatesStore } from '../stores/templates'
@@ -13,6 +14,7 @@ import AppSelect from '../components/AppSelect.vue'
 const settings = useSettingsStore()
 const libraries = useLibrariesStore()
 const templates = useTemplatesStore()
+const router = useRouter()
 
 const dataPath = ref('')
 const defaultPath = ref('')
@@ -146,7 +148,13 @@ async function applyNewRoot(dir: string | null) {
 
     <section class="group">
       <h2 class="group-title">{{ t.settings.about }}</h2>
-      <p class="about-line">{{ t.appName }} {{ t.appNameEn }} v{{ t.version }}</p>
+      <div class="row">
+        <span class="about-line">{{ t.appName }} {{ t.appNameEn }} v{{ t.version }}</span>
+        <button class="btn btn-sm" @click="router.push('/about')">
+          <AppIcon name="refresh" :size="14" />
+          {{ t.settings.openAbout }}
+        </button>
+      </div>
       <p class="hint">{{ t.settings.aboutLine }}</p>
       <p class="hint">© 2026 MogroWang Studio · MIT License</p>
     </section>
@@ -183,7 +191,6 @@ async function applyNewRoot(dir: string | null) {
 <style scoped>
 .page {
   padding: 28px 32px 48px;
-  max-width: 720px;
 }
 
 .large-title {

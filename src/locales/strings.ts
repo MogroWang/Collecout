@@ -285,8 +285,20 @@ export const t = {
     resetLocation: '恢复默认位置',
     dataRootNote: '桌面端数据位置可自定义：首次启动时可选择，之后在这里更改。',
     openDataFolder: '打开数据文件夹',
+    openAbout: '关于与更新',
     about: '关于',
     aboutLine: '萃序 Collecout · 把零散文档萃成有序的信息库',
+  },
+
+  about: {
+    title: '关于',
+    checkUpdate: '检查更新',
+    checking: '正在检查…',
+    upToDate: (v: string) => `已是最新版本（v${v}）`,
+    newVersion: (v: string) => `发现新版本 v${v}`,
+    gotoRelease: '前往查看',
+    checkFailed: '检查失败，请检查网络后重试',
+    releasesPage: '前往 Releases 页面',
   },
 
   toast: {
