@@ -27,6 +27,28 @@ export function createWebAdapter(): StorageAdapter {
     async exists(path) {
       return ls.getItem(PREFIX + path) !== null
     },
+    /** 预览模式：二进制以 base64 文本存入 localStorage（限额 ~5MB，仅供开发调试） */
+    async writeBinary(rel, bytes) {
+      let bin = ''
+      const chunk = 0x8000
+      for (let i = 0; i < bytes.length; i += chunk) {
+        bin += String.fromCharCode(...bytes.subarray(i, i + chunk))
+      }
+      try {
+        ls.setItem(PREFIX + rel, btoa(bin))
+        return true
+      } catch {
+        return false
+      }
+    },
+    async readBinary(rel) {
+      const b64 = ls.getItem(PREFIX + rel)
+      if (b64 === null) return null
+      const bin = atob(b64)
+      const bytes = new Uint8Array(bin.length)
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+      return bytes
+    },
     async listSubdirs(dir) {
       const prefix = PREFIX + dir + '/'
       const names = new Set<string>()
