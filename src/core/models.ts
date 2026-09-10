@@ -52,10 +52,17 @@ export interface Entry {
   values: Record<string, EntryValue>
   confidence: Record<string, number>
   sourceRef: SourceRef
-  /** 随条目展示的图片（库文件夹 files/ 内的存储名，来自 Excel 单元格） */
-  images?: string[]
+  /** 单元格图片：fieldId 指向所属字段（列），与文字值一样随字段展示 */
+  images?: EntryImage[]
   createdAt: string
   updatedAt: string
+}
+
+/** 条目里的单元格图片（Excel 导入；storedAs 为库文件夹 files/ 内的存储名） */
+export interface EntryImage {
+  storedAs: string
+  /** 图片所在列对应的字段 id；无列归属（文档来源等）时缺省 */
+  fieldId?: string
 }
 
 import type { SourceKind } from './parsers/types'

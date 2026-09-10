@@ -75,6 +75,27 @@ const filteredEntries = computed(() => {
   return applyFilters(library.value.entries, fields.value, filter.value)
 })
 
+/* ---------- 条目图片：按存储名加载 blob URL 供表格 / 卡片 / 详情展示 ---------- */
+const imageUrls = ref<Record<string, string>>({})
+
+watch(
+  () => library.value?.entries.map((e) => (e.images ?? []).map((i) => i.storedAs)).flat().join(','),
+  async (signature) => {
+    const lib = library.value
+    if (!lib) return
+    for (const entry of lib.entries) {
+      for (const img of entry.images ?? []) {
+        if (imageUrls.value[img.storedAs]) continue
+        const blob = await libraries.readImage(lib.id, img.storedAs)
+        if (!blob) continue
+        imageUrls.value = { ...imageUrls.value, [img.storedAs]: URL.createObjectURL(blob) }
+      }
+    }
+    void signature
+  },
+  { immediate: true },
+)
+
 const visibleEntries = computed(() => {
   if (!sort.value) return filteredEntries.value
   return sortEntries(filteredEntries.value, fields.value, sort.value.fieldId, sort.value.dir)
@@ -479,6 +500,7 @@ async function pickNewLocation() {
           :selected="effectiveSelected"
           :sort="sort"
           :multi-select="multiSelect"
+          :image-urls="imageUrls"
           @select="selectWithModifiers"
           @toggle-all="toggleAll"
           @sort="onSort"
@@ -490,6 +512,7 @@ async function pickNewLocation() {
           :entries="visibleEntries"
           :selected="effectiveSelected"
           :multi-select="multiSelect"
+          :image-urls="imageUrls"
           @select="selectWithModifiers"
           @open="(id) => (openEntryId = id)"
         />

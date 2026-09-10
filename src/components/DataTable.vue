@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import type { Entry, FieldDef } from '../core/models'
 
 const props = defineProps<{
@@ -8,6 +9,8 @@ const props = defineProps<{
   sort: { fieldId: string; dir: 'asc' | 'desc' } | null
   /** 显式多选模式：显示复选框列，点击行即选择 */
   multiSelect?: boolean
+  /** 库内图片的 blob URL（key = files/ 存储名） */
+  imageUrls?: Record<string, string>
 }>()
 
 const emit = defineEmits<{
@@ -16,6 +19,18 @@ const emit = defineEmits<{
   sort: [fieldId: string]
   open: [id: string]
 }>()
+
+const previewUrl = ref<string | null>(null)
+
+/** 条目在某字段列上的单元格图片 */
+function cellImage(entry: Entry, field: FieldDef): string | null {
+  for (const img of entry.images ?? []) {
+    if (img.fieldId !== field.id) continue
+    const url = props.imageUrls?.[img.storedAs]
+    if (url) return url
+  }
+  return null
+}
 
 function display(field: FieldDef, entry: Entry): string {
   const v = entry.values[field.id]
@@ -88,16 +103,74 @@ function onRowClick(entry: Entry, index: number, e: MouseEvent) {
           />
         </td>
         <td v-for="field in props.fields" :key="field.id">
-          <span v-if="field.kind === 'tag' && display(field, entry)" class="chip">{{ display(field, entry) }}</span>
+          <button
+            v-if="cellImage(entry, field)"
+            type="button"
+            class="cell-image"
+            @click.stop="previewUrl = cellImage(entry, field)"
+          >
+            <img :src="cellImage(entry, field) ?? ''" alt="" loading="lazy" />
+          </button>
+          <span v-else-if="field.kind === 'tag' && display(field, entry)" class="chip">{{ display(field, entry) }}</span>
           <span v-else-if="field.kind === 'date'" class="cell-date">{{ display(field, entry) }}</span>
           <span v-else class="cell-truncate" :title="display(field, entry)">{{ display(field, entry) }}</span>
         </td>
       </tr>
     </tbody>
   </table>
+
+  <Teleport to="body">
+    <Transition name="fade">
+      <div v-if="previewUrl" class="img-preview" role="button" @click="previewUrl = null">
+        <img :src="previewUrl" alt="" />
+      </div>
+    </Transition>
+  </Teleport>
 </template>
 
 <style scoped>
+.cell-image {
+  display: inline-flex;
+  width: 40px;
+  height: 32px;
+  padding: 0;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+  background: var(--surface-2);
+}
+
+.cell-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 150ms var(--ease-sheet);
+}
+
+.cell-image:hover img {
+  transform: scale(1.08);
+}
+
+.img-preview {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: var(--scrim);
+  display: grid;
+  place-items: center;
+  padding: 32px;
+  cursor: zoom-out;
+}
+
+.img-preview img {
+  max-width: min(920px, 92vw);
+  max-height: 88vh;
+  border-radius: var(--r-m);
+  box-shadow: var(--shadow-2);
+  background: #fff;
+}
+
 .col-check {
   width: 36px;
 }

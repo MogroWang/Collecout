@@ -168,6 +168,12 @@ export const useLibrariesStore = defineStore('libraries', {
       this.libraries = await repo().loadLibraries()
       for (const lib of this.libraries) {
         lib.fields = rebuildLegacyFields(lib)
+        // 0.4.0 早期把条目图片存成存储名字符串，归一化为带字段归属的结构
+        for (const entry of lib.entries) {
+          if (Array.isArray(entry.images)) {
+            entry.images = entry.images.map((img) => (typeof img === 'string' ? { storedAs: img } : img))
+          }
+        }
       }
       this.libraries.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
     },
@@ -279,15 +285,15 @@ export const useLibrariesStore = defineStore('libraries', {
       persist(lib)
       return records
     },
-    /** 把图片按结构化映射（锚点 → 条目）挂到条目上；映射不上的仅留在来源档案里 */
-    async attachEntryImages(id: string, pairs: { entryId: string; storedAs: string }[]): Promise<void> {
+    /** 把图片按结构化映射（锚点 → 条目 + 字段）挂到条目上；映射不上的仅留在来源档案里 */
+    async attachEntryImages(id: string, pairs: { entryId: string; storedAs: string; fieldId?: string }[]): Promise<void> {
       const lib = this.byId(id)
       if (!lib || pairs.length === 0) return
       let changed = false
       for (const p of pairs) {
         const entry = lib.entries.find((e) => e.id === p.entryId)
         if (!entry) continue
-        entry.images = [...(entry.images ?? []), p.storedAs]
+        entry.images = [...(entry.images ?? []), p.fieldId ? { storedAs: p.storedAs, fieldId: p.fieldId } : { storedAs: p.storedAs }]
         changed = true
       }
       if (changed) persist(lib)

@@ -16,28 +16,31 @@ const draft = reactive({
   values: { ...props.entry.values } as Record<string, EntryValue | undefined>,
 })
 
-/* 条目图片（Excel 单元格图片）：按存储名读字节转 blob URL 展示 */
-const imageUrls = ref<{ storedAs: string; url: string }[]>([])
+/* 条目图片（Excel 单元格图片）：按字段归属展示，读字节转 blob URL */
+const imageUrls = ref<Record<string, string>>({})
 const previewImage = ref<string | null>(null)
 const urlCache = new Map<string, string>()
 
-const imageNames = computed(() => props.entry.images ?? [])
+const entryImages = computed(() => props.entry.images ?? [])
+
+function imagesOf(fieldId: string | undefined): { storedAs: string; url: string }[] {
+  return entryImages.value
+    .filter((img) => img.fieldId === fieldId)
+    .map((img) => ({ storedAs: img.storedAs, url: imageUrls.value[img.storedAs] }))
+    .filter((img) => img.url !== undefined)
+}
 
 watch(
-  imageNames,
-  async (names) => {
-    const loaded: { storedAs: string; url: string }[] = []
-    for (const storedAs of names) {
-      let url = urlCache.get(storedAs)
-      if (!url) {
-        const blob = await libraries.readImage(props.library.id, storedAs)
-        if (!blob) continue
-        url = URL.createObjectURL(blob)
-        urlCache.set(storedAs, url)
-      }
-      loaded.push({ storedAs, url })
+  entryImages,
+  async (images) => {
+    for (const img of images) {
+      if (urlCache.has(img.storedAs)) continue
+      const blob = await libraries.readImage(props.library.id, img.storedAs)
+      if (!blob) continue
+      const url = URL.createObjectURL(blob)
+      urlCache.set(img.storedAs, url)
+      imageUrls.value = { ...imageUrls.value, [img.storedAs]: url }
     }
-    imageUrls.value = loaded
   },
   { immediate: true },
 )
@@ -66,11 +69,17 @@ function isTitle(field: Template['fields'][number]): boolean {
     </template>
 
     <div class="entry-form">
-      <div v-if="imageUrls.length > 0" class="form-row">
-        <label>{{ t.entryDrawer.images }}</label>
-        <div class="image-grid">
+      <div v-for="field in props.template.fields" :key="field.id" class="form-row">
+        <label>{{ field.name }}</label>
+        <FieldInput
+          :field="field"
+          :model-value="draft.values[field.id]"
+          :multiline="field.kind === 'text' && !isTitle(field)"
+          @update:model-value="(v) => (draft.values[field.id] = v)"
+        />
+        <div v-if="imagesOf(field.id).length > 0" class="field-images">
           <button
-            v-for="img in imageUrls"
+            v-for="img in imagesOf(field.id)"
             :key="img.storedAs"
             type="button"
             class="image-thumb"
@@ -81,14 +90,19 @@ function isTitle(field: Template['fields'][number]): boolean {
         </div>
       </div>
 
-      <div v-for="field in props.template.fields" :key="field.id" class="form-row">
-        <label>{{ field.name }}</label>
-        <FieldInput
-          :field="field"
-          :model-value="draft.values[field.id]"
-          :multiline="field.kind === 'text' && !isTitle(field)"
-          @update:model-value="(v) => (draft.values[field.id] = v)"
-        />
+      <div v-if="imagesOf(undefined).length > 0" class="form-row">
+        <label>{{ t.entryDrawer.images }}</label>
+        <div class="field-images">
+          <button
+            v-for="img in imagesOf(undefined)"
+            :key="img.storedAs"
+            type="button"
+            class="image-thumb"
+            @click="previewImage = img.url"
+          >
+            <img :src="img.url" alt="" />
+          </button>
+        </div>
       </div>
 
       <p class="meta source-line">
@@ -121,7 +135,7 @@ function isTitle(field: Template['fields'][number]): boolean {
   flex-direction: column;
 }
 
-.image-grid {
+.field-images {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
   gap: 8px;

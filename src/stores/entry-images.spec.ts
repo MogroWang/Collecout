@@ -48,12 +48,16 @@ describe('Excel 图片与条目行的映射', () => {
 
     const template = {
       id: 't', name: 't', description: '', builtin: true,
-      fields: [{ id: 'f1', name: '标题', kind: 'text' as const, strategy: 'tableMap' as const }],
+      fields: [
+        { id: 'f1', name: '标题', kind: 'text' as const, strategy: 'tableMap' as const },
+        { id: 'f2', name: '凭证', kind: 'text' as const, strategy: 'tableMap' as const },
+      ],
     }
+    const mapping = { f1: 0, f2: 1 }
     const drafts = extractFromTable(
       table.rows,
       template,
-      { f1: 0 },
+      mapping,
       {},
       { fileName: doc.fileName, locator: (i) => `「明细列表」第 ${i + 2} 行` },
       (i) => ({ sourceRow: table.rowMap ? table.rowMap[i + 1] : i + 1 }),
@@ -64,20 +68,22 @@ describe('Excel 图片与条目行的映射', () => {
     const lib = await libraries.create('验证库', 't', template.fields)
     const r = await libraries.addEntries(lib.id, drafts, { fileName: doc.fileName, kind: 'xlsx' }, template.fields)
 
-    // 模拟 commit 的映射段：锚点 → 草稿位置 → 条目
+    // 模拟 commit 的映射段：锚点 → 草稿位置 → 条目 + 字段（列 → 表头 → 字段 id）
     const images = doc.images ?? []
-    const pairs: { entryId: string; storedAs: string }[] = []
-    for (const [i, img] of images.entries()) {
+    const pairs: { entryId: string; storedAs: string; fieldId?: string }[] = []
+    for (const img of images) {
       const di = drafts.findIndex((d) => d.sourceRow === img.row)
       const entry = r.entries[di]
-      if (entry) pairs.push({ entryId: entry.id, storedAs: `image${i + 1}.png` })
+      if (!entry) continue
+      const fieldId = Object.entries(mapping).find(([, col]) => col === img.col)?.[0]
+      pairs.push({ entryId: entry.id, storedAs: img.name, fieldId })
     }
     await libraries.attachEntryImages(lib.id, pairs)
 
     const entries = libraries.libraries[0].entries
     const first = entries.find((e) => e.values.f1 === '第一条')!
     const second = entries.find((e) => e.values.f1 === '第二条')!
-    expect(first.images).toEqual(['image1.png'])
-    expect(second.images).toEqual(['image2.png'])
+    expect(first.images).toEqual([{ storedAs: 'image1.png', fieldId: 'f2' }])
+    expect(second.images).toEqual([{ storedAs: 'image2.png', fieldId: 'f2' }])
   })
 })

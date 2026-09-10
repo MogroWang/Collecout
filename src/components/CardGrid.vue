@@ -7,6 +7,8 @@ const props = defineProps<{
   selected: Set<string>
   /** 显式多选模式：显示复选框角标，点击卡片即选择 */
   multiSelect?: boolean
+  /** 库内图片的 blob URL（key = files/ 存储名） */
+  imageUrls?: Record<string, string>
 }>()
 
 const emit = defineEmits<{
@@ -26,6 +28,16 @@ function detailFields(): FieldDef[] {
 function value(field: FieldDef, entry: Entry): string {
   const v = entry.values[field.id]
   return v === undefined ? '' : String(v)
+}
+
+/** 条目在某字段上的单元格图片 */
+function cellImage(field: FieldDef, entry: Entry): string | null {
+  for (const img of entry.images ?? []) {
+    if (img.fieldId !== field.id) continue
+    const url = props.imageUrls?.[img.storedAs]
+    if (url) return url
+  }
+  return null
 }
 
 /** 卡片点击：多选模式下切换选中（支持 Shift / Ctrl），否则打开条目详情 */
@@ -70,7 +82,11 @@ function onCheck(entry: Entry, index: number, e: Event) {
       </header>
       <dl class="card-rows">
         <template v-for="field in detailFields()" :key="field.id">
-          <div v-if="value(field, entry) !== ''" class="card-row">
+          <div v-if="cellImage(field, entry)" class="card-row">
+            <dt>{{ field.name }}</dt>
+            <dd><img class="card-image" :src="cellImage(field, entry) ?? ''" alt="" loading="lazy" /></dd>
+          </div>
+          <div v-else-if="value(field, entry) !== ''" class="card-row">
             <dt>{{ field.name }}</dt>
             <dd>
               <span v-if="field.kind === 'tag'" class="chip">{{ value(field, entry) }}</span>
@@ -167,5 +183,14 @@ function onCheck(entry: Entry, index: number, e: Event) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.card-image {
+  max-height: 72px;
+  max-width: 100%;
+  border-radius: var(--r-s);
+  border: 1px solid var(--hairline);
+  display: block;
+  object-fit: cover;
 }
 </style>

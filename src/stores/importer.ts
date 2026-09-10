@@ -330,12 +330,12 @@ export const useImporterStore = defineStore('importer', {
             fileMode,
           )
         }
-        // 图片按锚点映射到条目：锚点必须属于本次导入的工作表，行/列与草稿的结构化位置对齐
+        // 图片按锚点映射：行 → 条目，列 → 表头 → 字段（图片与该列文字一样随字段展示）
         const imageRecords = records.filter((rec) => rec.kind === 'image')
         if (imageRecords.length > 0 && r.entries.length > 0) {
           const label = f.tableLabel ?? ''
           const isCol = f.drafts.some((d) => d.sourceCol !== undefined)
-          const pairs: { entryId: string; storedAs: string }[] = []
+          const pairs: { entryId: string; storedAs: string; fieldId?: string }[] = []
           for (const rec of imageRecords) {
             if (!rec.anchor || rec.anchor.sheet !== label) continue
             const di = f.drafts.findIndex((d) =>
@@ -343,7 +343,14 @@ export const useImporterStore = defineStore('importer', {
             )
             if (di === -1) continue
             const entry = r.entries[di]
-            if (entry) pairs.push({ entryId: entry.id, storedAs: rec.storedAs })
+            if (!entry) continue
+            // 列 → 表头文字 → 字段 id（列布局下图片锚定的是原表「行」，退化为条目级）
+            let fieldId: string | undefined
+            if (!isCol) {
+              const col = rec.anchor!.col
+              fieldId = Object.entries(f.mapping).find(([, colIndex]) => colIndex === col)?.[0]
+            }
+            pairs.push({ entryId: entry.id, storedAs: rec.storedAs, fieldId })
           }
           if (pairs.length > 0) await libraries.attachEntryImages(libId, pairs)
         }
