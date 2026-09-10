@@ -38,6 +38,11 @@ export async function writeTextAbsolute(path: string, content: string): Promise<
   await writeTextFile(path, content)
 }
 
+export async function writeBinaryAbsolute(path: string, bytes: Uint8Array): Promise<void> {
+  const { writeFile } = await import('@tauri-apps/plugin-fs')
+  await writeFile(path, bytes)
+}
+
 export async function mkdirAbsolute(path: string): Promise<void> {
   const { mkdir } = await import('@tauri-apps/plugin-fs')
   await mkdir(path, { recursive: true })
@@ -93,7 +98,11 @@ export async function copyToClipboard(content: string): Promise<boolean> {
 
 /** 浏览器兜底：触发一次下载 */
 export function downloadText(fileName: string, content: string): void {
-  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' })
+  downloadBlob(fileName, new Blob([content], { type: 'text/plain;charset=utf-8' }))
+}
+
+/** 浏览器兜底：下载二进制 Blob（docx / pdf / 图片等） */
+export function downloadBlob(fileName: string, blob: Blob): void {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url

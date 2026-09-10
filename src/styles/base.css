@@ -22,6 +22,13 @@ body {
   overscroll-behavior: none;
 }
 
+*,
+*::before,
+*::after {
+  /* 触屏点击控件时 WebView 默认的蓝色高亮矩形 */
+  -webkit-tap-highlight-color: transparent;
+}
+
 h1,
 h2,
 h3,

@@ -23,45 +23,91 @@ function frontMatter(entry: Entry, fields: ReturnType<typeof selectedFields>): s
   return lines.join('\n')
 }
 
-/** 文件夹导出方案：每个条目一个 Markdown 文件 + 索引 */
-export function exportFolderPlan(library: Library, template: Template, entries: Entry[], selection: ExportSelection): FolderPlan {
+function plainEntry(entry: Entry, fields: ReturnType<typeof selectedFields>, bodyField: Template['fields'][number] | undefined): string {
+  const lines: string[] = []
+  for (const f of fields) {
+    const v = entry.values[f.id]
+    if (v === undefined || String(v) === '') continue
+    const value = f.kind === 'date' ? formatDate(String(v)) : String(v)
+    if (f === bodyField && value.includes('\n')) {
+      lines.push(`${f.name}:`)
+      lines.push(value)
+    } else {
+      lines.push(`${f.name}: ${value.replace(/\n/g, '；')}`)
+    }
+  }
+  lines.push(`来源: ${entry.sourceRef.fileName} ${entry.sourceRef.locator}`)
+  return lines.join('\n')
+}
+
+/**
+ * 文件夹导出方案：每个条目一个文件 + 索引。
+ * textExt = 'md' 输出 Markdown（front matter + 索引表）；'txt' 输出纯文本分节。
+ */
+export function exportFolderPlan(
+  library: Library,
+  template: Template,
+  entries: Entry[],
+  selection: ExportSelection,
+  textExt: 'md' | 'txt' = 'md',
+): FolderPlan {
   const fields = selectedFields(template, selection.fields)
   const bodyField = template.fields.find((f) => f.kind === 'text' && /内容|摘要|正文|记录|note|content/i.test(f.name) && fields.includes(f))
   const files: Record<string, string> = {}
+  const fileNames: string[] = []
   const usedNames = new Set<string>()
   entries.forEach((entry, i) => {
     const num = String(i + 1).padStart(4, '0')
     let base = sanitizeFileName(entryTitle(entry, template))
-    let name = `${base}.md`
-    for (let n = 2; usedNames.has(name); n++) name = `${base}（${n}）.md`
+    let name = `${base}.${textExt}`
+    for (let n = 2; usedNames.has(name); n++) name = `${base}（${n}）.${textExt}`
     usedNames.add(name)
-    const meta = frontMatter(entry, fields)
-    const body = bodyField ? String(entry.values[bodyField.id] ?? '') : ''
-    const bodyRest = fields
-      .filter((f) => f !== bodyField)
-      .filter((f) => entry.values[f.id] !== undefined && String(entry.values[f.id]) !== '')
-      .map((f) => `- **${f.name}**：${f.kind === 'date' ? formatDate(String(entry.values[f.id])) : String(entry.values[f.id]).replace(/\n/g, '；')}`)
-    const content = [meta, '', body !== '' ? body : bodyRest.join('\n')].join('\n').trimEnd() + '\n'
-    files[`${num}_${name}`] = content
+    fileNames.push(`${num}_${name}`)
+    if (textExt === 'md') {
+      const meta = frontMatter(entry, fields)
+      const body = bodyField ? String(entry.values[bodyField.id] ?? '') : ''
+      const bodyRest = fields
+        .filter((f) => f !== bodyField)
+        .filter((f) => entry.values[f.id] !== undefined && String(entry.values[f.id]) !== '')
+        .map((f) => `- **${f.name}**：${f.kind === 'date' ? formatDate(String(entry.values[f.id])) : String(entry.values[f.id]).replace(/\n/g, '；')}`)
+      files[`${num}_${name}`] = [meta, '', body !== '' ? body : bodyRest.join('\n')].join('\n').trimEnd() + '\n'
+    } else {
+      files[`${num}_${name}`] = plainEntry(entry, fields, bodyField) + '\n'
+    }
   })
 
-  const indexLines = [
-    `# ${library.name} · 索引`,
-    '',
-    `共 ${entries.length} 条 · 模板：${template.name} · 导出于 ${todayIso()}`,
-    '',
-    '| # | ' + fields.map((f) => f.name).join(' | ') + ' | 文件 |',
-    '| --- | ' + fields.map(() => '---').join(' | ') + ' | --- |',
-  ]
-  entries.forEach((entry, i) => {
-    const fileName = Object.keys(files)[i]
-    const cells = fields.map((f) => {
-      const v = entry.values[f.id]
-      return v === undefined ? '' : String(v).replace(/\|/g, '\\|').replace(/\n/g, '；')
+  if (textExt === 'md') {
+    const indexLines = [
+      `# ${library.name} · 索引`,
+      '',
+      `共 ${entries.length} 条 · 模板：${template.name} · 导出于 ${todayIso()}`,
+      '',
+      '| # | ' + fields.map((f) => f.name).join(' | ') + ' | 文件 |',
+      '| --- | ' + fields.map(() => '---').join(' | ') + ' | --- |',
+    ]
+    entries.forEach((entry, i) => {
+      const cells = fields.map((f) => {
+        const v = entry.values[f.id]
+        return v === undefined ? '' : String(v).replace(/\|/g, '\\|').replace(/\n/g, '；')
+      })
+      indexLines.push(`| ${i + 1} | ${cells.join(' | ')} | ${fileNames[i]} |`)
     })
-    indexLines.push(`| ${i + 1} | ${cells.join(' | ')} | ${fileName} |`)
-  })
-  files['索引.md'] = indexLines.join('\n') + '\n'
+    files['索引.md'] = indexLines.join('\n') + '\n'
+  } else {
+    const indexLines = [
+      `${library.name} · 索引`,
+      `共 ${entries.length} 条 · 模板：${template.name} · 导出于 ${todayIso()}`,
+      '',
+      ...entries.map((entry, i) => {
+        const cells = fields.map((f) => {
+          const v = entry.values[f.id]
+          return v === undefined ? '' : String(v).replace(/\t|\n/g, '；')
+        })
+        return `${i + 1}\t${cells.join('\t')}\t${fileNames[i]}`
+      }),
+    ]
+    files['索引.txt'] = indexLines.join('\n') + '\n'
+  }
 
   return {
     dirName: sanitizeFileName(`${library.name} 导出 ${todayIso()}`),

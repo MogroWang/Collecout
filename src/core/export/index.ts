@@ -1,3 +1,6 @@
 export * from './shared'
 export * from './text'
 export * from './folder'
+export * from './docx'
+export * from './pdf'
+export * from './render'

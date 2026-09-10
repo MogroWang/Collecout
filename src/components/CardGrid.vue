@@ -5,6 +5,8 @@ const props = defineProps<{
   fields: FieldDef[]
   entries: Entry[]
   selected: Set<string>
+  /** 显式多选模式：显示复选框角标，点击卡片即选择 */
+  multiSelect?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -28,7 +30,7 @@ function value(field: FieldDef, entry: Entry): string {
 
 /** 卡片点击：多选模式下切换选中（支持 Shift / Ctrl），否则打开条目详情 */
 function onCardClick(entry: Entry, index: number, e: MouseEvent) {
-  const multi = props.selected.size > 0
+  const multi = props.multiSelect || props.selected.size > 0
   if (multi || e.shiftKey || e.ctrlKey || e.metaKey) {
     emit('select', entry.id, index, { shift: e.shiftKey, meta: e.ctrlKey || e.metaKey })
   } else {
@@ -54,7 +56,7 @@ function onCheck(entry: Entry, index: number, e: Event) {
       :data-entry-id="entry.id"
       @click="onCardClick(entry, i, $event)"
     >
-      <label v-if="props.selected.size > 0 || props.selected.has(entry.id)" class="card-check" @click.stop>
+      <label v-if="multiSelect || props.selected.size > 0 || props.selected.has(entry.id)" class="card-check" @click.stop>
         <input
           type="checkbox"
           :checked="props.selected.has(entry.id)"

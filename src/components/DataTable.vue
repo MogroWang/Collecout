@@ -6,6 +6,8 @@ const props = defineProps<{
   entries: Entry[]
   selected: Set<string>
   sort: { fieldId: string; dir: 'asc' | 'desc' } | null
+  /** 显式多选模式：显示复选框列，点击行即选择 */
+  multiSelect?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -36,13 +38,22 @@ function onCheck(entry: Entry, index: number, e: Event) {
     meta: (e as MouseEvent).ctrlKey || (e as MouseEvent).metaKey,
   })
 }
+
+/** 行点击：多选模式（或已有选中）下切换选择，否则打开条目 */
+function onRowClick(entry: Entry, index: number, e: MouseEvent) {
+  if (props.multiSelect || props.selected.has(entry.id)) {
+    emit('select', entry.id, index, { shift: e.shiftKey, meta: e.ctrlKey || e.metaKey })
+  } else {
+    emit('open', entry.id)
+  }
+}
 </script>
 
 <template>
   <table class="data-table">
     <thead>
       <tr>
-        <th class="col-check">
+        <th v-if="multiSelect || selected.size > 0" class="col-check">
           <input type="checkbox" :checked="allSelected()" aria-label="全选" @change="emit('toggle-all')" />
         </th>
         <th
@@ -66,9 +77,9 @@ function onCheck(entry: Entry, index: number, e: Event) {
         class="row-click"
         :class="{ selected: props.selected.has(entry.id) }"
         :data-entry-id="entry.id"
-        @click="emit('open', entry.id)"
+        @click="onRowClick(entry, i, $event)"
       >
-        <td class="col-check" @click.stop>
+        <td v-if="multiSelect || selected.size > 0" class="col-check" @click.stop>
           <input
             type="checkbox"
             :checked="props.selected.has(entry.id)"

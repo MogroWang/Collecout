@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { Entry, ExportFormat, Library, Template } from '../core/models'
-import { exportCsv, exportJson, exportMarkdown, exportPlainText, type TextExportStyle } from '../core/export'
-import { exportFolderPlan } from '../core/export'
+import { exportCsv, exportJson, exportMarkdown, exportPlainText, exportDocxBytes, exportFolderPlan, renderPages, canvasToJpeg, canvasToPng, buildPdf, type TextExportStyle } from '../core/export'
 import { useSettingsStore } from '../stores/settings'
 import { useUiStore } from '../stores/ui'
 import { t } from '../locales/strings'
+import { sanitizeFileName } from '../core/export'
 import { isDesktop } from '../lib/platform'
-import { copyToClipboard, downloadText, mkdirAbsolute, pickDirectory, pickSavePath, revealInFinder, writeTextAbsolute } from '../lib/desktop'
+import { copyToClipboard, downloadBlob, downloadText, mkdirAbsolute, pickDirectory, pickSavePath, revealInFinder, writeBinaryAbsolute, writeTextAbsolute } from '../lib/desktop'
 import AppModal from './AppModal.vue'
 import AppIcon from './AppIcon.vue'
 
@@ -28,8 +28,13 @@ const scope = ref<'all' | 'filtered' | 'selected'>('all')
 const chosenFields = ref<string[]>(props.template.fields.map((f) => f.id))
 const format = ref<ExportFormat>(settings.settings.defaultExportFormat)
 const textStyle = ref<TextExportStyle>('tsv')
+/** 本地文件夹导出的文本格式 */
+const folderExt = ref<'md' | 'txt'>('md')
 const exportedPath = ref<string | null>(null)
 const exportedIsDir = ref(false)
+
+const BINARY_FORMATS: ExportFormat[] = ['docx', 'pdf', 'image']
+const isBinaryFormat = computed(() => BINARY_FORMATS.includes(format.value))
 
 const entries = computed<Entry[]>(() => {
   if (scope.value === 'selected') return props.selected
@@ -40,6 +45,9 @@ const entries = computed<Entry[]>(() => {
 const formats: { id: ExportFormat; name: string; desc: string }[] = [
   { id: 'markdown', name: t.exportDialog.fmtMarkdown, desc: t.exportDialog.fmtMarkdownDesc },
   { id: 'text', name: t.exportDialog.fmtText, desc: t.exportDialog.fmtTextDesc },
+  { id: 'docx', name: t.exportDialog.fmtDocx, desc: t.exportDialog.fmtDocxDesc },
+  { id: 'pdf', name: t.exportDialog.fmtPdf, desc: t.exportDialog.fmtPdfDesc },
+  { id: 'image', name: t.exportDialog.fmtImage, desc: t.exportDialog.fmtImageDesc },
   { id: 'csv', name: t.exportDialog.fmtCsv, desc: t.exportDialog.fmtCsvDesc },
   { id: 'json', name: t.exportDialog.fmtJson, desc: t.exportDialog.fmtJsonDesc },
   { id: 'folder', name: t.exportDialog.fmtFolder, desc: t.exportDialog.fmtFolderDesc },
@@ -47,7 +55,7 @@ const formats: { id: ExportFormat; name: string; desc: string }[] = [
 
 const selection = computed(() => ({ fields: chosenFields.value }))
 
-/** 按当前选项生成导出内容（复制到剪贴板与导出共用） */
+/** 按当前选项生成导出内容（复制到剪贴板与文本导出共用） */
 function buildResult(): { fileName: string; content: string } | null {
   switch (format.value) {
     case 'markdown':
@@ -63,8 +71,8 @@ function buildResult(): { fileName: string; content: string } | null {
   }
 }
 
-const preview = computed<string>(() => {
-  if (entries.value.length === 0) return ''
+const preview = computed<string | null>(() => {
+  if (entries.value.length === 0 || isBinaryFormat.value) return null
   const sample = entries.value.slice(0, 2)
   switch (format.value) {
     case 'markdown':
@@ -76,11 +84,13 @@ const preview = computed<string>(() => {
     case 'json':
       return exportJson(props.library, props.template, sample, selection.value).content
     case 'folder': {
-      const plan = exportFolderPlan(props.library, props.template, sample, selection.value)
+      const plan = exportFolderPlan(props.library, props.template, sample, selection.value, folderExt.value)
       return Object.entries(plan.files)
         .map(([name, content]) => `/* ${name} */\n${content}`)
         .join('\n')
     }
+    default:
+      return null
   }
 })
 
@@ -94,12 +104,11 @@ function toggleField(id: string) {
 async function doExport() {
   if (entries.value.length === 0) return
   try {
-    if (format.value === 'folder') {
-      await exportAsFolder()
-    } else {
-      await exportAsFile()
-    }
-    // 文件成功落盘后才关闭导出窗口（复制到剪贴板不关闭）
+    if (format.value === 'folder') await exportAsFolder()
+    else if (format.value === 'docx') await exportAsDocx()
+    else if (format.value === 'pdf' || format.value === 'image') await exportAsPaged()
+    else await exportAsFile()
+    // 文件成功落盘后才关闭导出窗口
     emit('close')
   } catch (err) {
     ui.toast(err instanceof Error ? err.message : '导出失败', 'danger')
@@ -107,9 +116,9 @@ async function doExport() {
 }
 
 async function copyResult() {
-  if (entries.value.length === 0) return
+  if (entries.value.length === 0 || isBinaryFormat.value) return
   if (format.value === 'folder') {
-    const plan = exportFolderPlan(props.library, props.template, entries.value, selection.value)
+    const plan = exportFolderPlan(props.library, props.template, entries.value, selection.value, folderExt.value)
     const text = Object.entries(plan.files)
       .map(([name, content]) => `/* ${name} */\n${content}`)
       .join('\n\n')
@@ -142,8 +151,71 @@ async function exportAsFile() {
   await settings.set({ defaultExportFormat: format.value })
 }
 
+/** Word 文档：单文件二进制导出 */
+async function exportAsDocx() {
+  const bytes = exportDocxBytes(props.library, props.template, entries.value, selection.value)
+  const fileName = sanitizeFileName(`${props.library.name} 导出 ${new Date().toISOString().slice(0, 10)}`) + '.docx'
+  const blob = new Blob([bytes.slice().buffer], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' })
+  if (isDesktop()) {
+    const path = await pickSavePath(fileName)
+    if (!path) return
+    await writeBinaryAbsolute(path, bytes)
+    exportedPath.value = path
+    exportedIsDir.value = false
+  } else {
+    downloadBlob(fileName, blob)
+    exportedPath.value = fileName
+    exportedIsDir.value = false
+  }
+  ui.toast(t.exportDialog.exportedTo(exportedPath.value))
+  await settings.set({ defaultExportFormat: format.value })
+}
+
+/** PDF（单文件）/ 图片（每页一张 PNG） */
+async function exportAsPaged() {
+  const pages = renderPages(props.library, props.template, entries.value, selection.value)
+  const base = sanitizeFileName(`${props.library.name} 导出 ${new Date().toISOString().slice(0, 10)}`)
+  if (format.value === 'pdf') {
+    const bytes = buildPdf(pages.map((c) => ({ jpeg: canvasToJpeg(c), pixelW: c.width, pixelH: c.height })))
+    const fileName = `${base}.pdf`
+    if (isDesktop()) {
+      const path = await pickSavePath(fileName)
+      if (!path) return
+      await writeBinaryAbsolute(path, bytes)
+      exportedPath.value = path
+      exportedIsDir.value = false
+    } else {
+      downloadBlob(fileName, new Blob([bytes.slice().buffer], { type: 'application/pdf' }))
+      exportedPath.value = fileName
+      exportedIsDir.value = false
+    }
+  } else {
+    if (isDesktop()) {
+      const dir = await pickDirectory()
+      if (!dir) return
+      const target = `${dir}/${base}`
+      await mkdirAbsolute(target)
+      for (const [i, canvas] of pages.entries()) {
+        await writeBinaryAbsolute(`${target}/${base}_${String(i + 1).padStart(3, '0')}.png`, canvasToPng(canvas))
+      }
+      exportedPath.value = target
+      exportedIsDir.value = true
+    } else {
+      for (const [i, canvas] of pages.entries()) {
+        const bytes = canvasToPng(canvas)
+        downloadBlob(`${base}_${String(i + 1).padStart(3, '0')}.png`, new Blob([bytes.slice().buffer], { type: 'image/png' }))
+        await new Promise((r) => setTimeout(r, 200))
+      }
+      exportedPath.value = base
+      exportedIsDir.value = true
+    }
+  }
+  ui.toast(t.exportDialog.exportedTo(exportedPath.value))
+  await settings.set({ defaultExportFormat: format.value })
+}
+
 async function exportAsFolder() {
-  const plan = exportFolderPlan(props.library, props.template, entries.value, selection.value)
+  const plan = exportFolderPlan(props.library, props.template, entries.value, selection.value, folderExt.value)
   if (isDesktop()) {
     const dir = await pickDirectory()
     if (!dir) return
@@ -235,11 +307,29 @@ async function reveal() {
             </span>
           </label>
         </div>
+
+        <!-- 本地文件夹：选择条目文件的格式 -->
+        <div v-if="format === 'folder'" class="text-style">
+          <span class="folder-ext-label">{{ t.exportDialog.folderExt }}</span>
+          <div class="radio-row">
+            <label class="radio">
+              <input v-model="folderExt" type="radio" value="md" />
+              {{ t.exportDialog.folderExtMd }}
+            </label>
+            <label class="radio">
+              <input v-model="folderExt" type="radio" value="txt" />
+              {{ t.exportDialog.folderExtTxt }}
+            </label>
+          </div>
+        </div>
       </section>
 
-      <section v-if="preview" class="exp-section">
+      <section v-if="preview !== null" class="exp-section">
         <h3>{{ t.exportDialog.preview }}</h3>
         <pre class="preview">{{ preview }}</pre>
+      </section>
+      <section v-else-if="isBinaryFormat" class="exp-section">
+        <p class="hint">{{ t.exportDialog.noTextPreview }}</p>
       </section>
     </div>
 
@@ -252,7 +342,7 @@ async function reveal() {
         </button>
       </span>
       <span class="meta">{{ entries.length }} {{ t.exportDialog.entriesUnit }}</span>
-      <button class="btn" :disabled="entries.length === 0" @click="copyResult">
+      <button class="btn" :disabled="entries.length === 0 || isBinaryFormat" @click="copyResult">
         <AppIcon name="copy" :size="15" />
         {{ t.exportDialog.copyClipboard }}
       </button>
@@ -310,6 +400,12 @@ async function reveal() {
   padding: 10px 12px;
   background: var(--surface-2);
   border-radius: var(--r-m);
+}
+
+.folder-ext-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-2);
 }
 
 .text-style .radio > span {

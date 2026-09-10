@@ -108,6 +108,7 @@ async function applyNewRoot(dir: string | null) {
             :class="{ on: settings.settings.theme === opt.id }"
             @click="setTheme(opt.id)"
           >
+            <i class="swatch" :class="`sw-${opt.id}`" aria-hidden="true" />
             {{ opt.label }}
           </button>
         </div>
@@ -223,6 +224,29 @@ async function applyNewRoot(dir: string | null) {
 .row > span:first-child {
   font-weight: 500;
   flex: none;
+  margin-right: auto;
+}
+
+/* 主题选项的颜色预览 */
+.swatch {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  border-radius: 4px;
+  border: 1px solid var(--hairline-strong);
+  vertical-align: -2px;
+}
+
+.sw-system {
+  background: linear-gradient(135deg, #f4f3f0 50%, #1b1b1d 50%);
+}
+
+.sw-light {
+  background: #f4f3f0;
+}
+
+.sw-dark {
+  background: #1b1b1d;
 }
 
 .path {

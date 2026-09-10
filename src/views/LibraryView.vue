@@ -30,6 +30,8 @@ const view = ref<'table' | 'cards'>('table')
 const filter = ref<FilterState>({ ...EMPTY_FILTER })
 const sort = ref<{ fieldId: string; dir: SortDir } | null>(null)
 const selected = ref(new Set<string>())
+/** 显式多选模式：显示复选框并启用框选 / 滑动选择 */
+const multiSelect = ref(false)
 const openEntryId = ref<string | null>(null)
 const showExport = ref(false)
 const showRename = ref(false)
@@ -58,9 +60,15 @@ watch(
     filter.value = { ...EMPTY_FILTER }
     sort.value = null
     selected.value = new Set()
+    multiSelect.value = false
     openEntryId.value = null
   },
 )
+
+function toggleMultiSelect() {
+  multiSelect.value = !multiSelect.value
+  if (!multiSelect.value) clearSelection()
+}
 
 const filteredEntries = computed(() => {
   if (!library.value) return []
@@ -123,8 +131,8 @@ let marqueeStart = { x: 0, y: 0 }
 let suppressClick = false
 
 const multiSelectMode = computed(() => selected.value.size > 0)
-/** 框选过程中预览的选中集合实时替代正式集合，保证表格 / 卡片高亮一致 */
-const effectiveSelected = computed(() => (marquee.value ? marqueeHits.value : selected.value))
+/** 框选 / 滑选过程中预览的选中集合实时替代正式集合，保证表格 / 卡片高亮一致 */
+const effectiveSelected = computed(() => (marquee.value || marqueeActive ? marqueeHits.value : selected.value))
 
 function marqueeRect() {
   const m = marquee.value!
@@ -137,7 +145,8 @@ function marqueeRect() {
 }
 
 function onMarqueeStart(e: MouseEvent) {
-  if (e.button !== 0 || !multiSelectMode.value) return
+  if (e.button !== 0) return
+  if (!multiSelect.value && !multiSelectMode.value) return
   const target = e.target as HTMLElement
   if (target.closest('input, button, a, select, textarea, label')) return
   e.preventDefault()
@@ -191,6 +200,61 @@ function onCaptureClick(e: MouseEvent) {
     e.preventDefault()
     suppressClick = false
   }
+}
+
+/* ---------- 移动端滑动选择：多选模式下横向滑过条目即选中/取消，纵向滑动仍为滚动 ---------- */
+const touchState = { x0: 0, y0: 0, mode: '' as '' | 'swipe' | 'scroll', add: true }
+
+function entryIdAt(x: number, y: number): string {
+  const el = document.elementFromPoint(x, y)?.closest('[data-entry-id]')
+  return el?.getAttribute('data-entry-id') ?? ''
+}
+
+function onTouchStart(e: TouchEvent) {
+  if (!multiSelect.value || e.touches.length !== 1) {
+    touchState.mode = ''
+    return
+  }
+  const t = e.touches[0]
+  touchState.x0 = t.clientX
+  touchState.y0 = t.clientY
+  touchState.mode = ''
+  const id = entryIdAt(t.clientX, t.clientY)
+  // 起始条目决定本次滑动是「加入」还是「移除」
+  touchState.add = id === '' ? true : !selected.value.has(id)
+}
+
+function onTouchMove(e: TouchEvent) {
+  if (!multiSelect.value || e.touches.length !== 1) return
+  const t = e.touches[0]
+  const dx = t.clientX - touchState.x0
+  const dy = t.clientY - touchState.y0
+  if (touchState.mode === '') {
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < 10) return
+    touchState.mode = Math.abs(dx) > Math.abs(dy) ? 'swipe' : 'scroll'
+    if (touchState.mode === 'swipe') {
+      suppressClick = true
+      marqueeHits.value = new Set(selected.value)
+    }
+  }
+  if (touchState.mode !== 'swipe') return
+  e.preventDefault()
+  const id = entryIdAt(t.clientX, t.clientY)
+  if (id === '') return
+  const hits = new Set(marqueeActive ? marqueeHits.value : selected.value)
+  if (touchState.add) hits.add(id)
+  else hits.delete(id)
+  marqueeHits.value = hits
+  marqueeActive = true // 复用框选的实时预览集合，松手时统一落盘
+}
+
+function onTouchEnd() {
+  if (touchState.mode === 'swipe') {
+    selected.value = new Set(marqueeHits.value)
+    marqueeHits.value = new Set()
+    marqueeActive = false
+  }
+  touchState.mode = ''
 }
 
 /* ---------- 键盘：Ctrl/Cmd+A 全选，Esc 取消 ---------- */
@@ -336,6 +400,11 @@ async function pickNewLocation() {
           <button :class="{ on: view === 'cards' }" @click="view = 'cards'">{{ t.library.cards }}</button>
         </div>
 
+        <button class="btn" :class="{ 'filter-on': multiSelect }" :title="t.library.multiSelectHint" @click="toggleMultiSelect">
+          <AppIcon name="check" :size="15" />
+          {{ t.library.multiSelect }}
+        </button>
+
         <div class="search-wrap">
           <AppIcon name="search" :size="14" class="search-icon" />
           <input v-model="filter.search" class="input search-input" type="search" :placeholder="t.common.search" />
@@ -391,14 +460,25 @@ async function pickNewLocation() {
         <button class="btn" @click="filter = { ...EMPTY_FILTER }">{{ t.library.clearFilter }}</button>
       </EmptyState>
 
-      <!-- 勾选至少一项后，可在列表区域拖动框选批量选择 -->
-      <div v-else ref="entriesWrap" class="entries-wrap" @mousedown="onMarqueeStart" @click.capture="onCaptureClick">
+      <!-- 多选模式下：桌面拖动框选 / Ctrl/Shift 点选，触屏左右滑动选择 -->
+      <div
+        v-else
+        ref="entriesWrap"
+        class="entries-wrap"
+        @mousedown="onMarqueeStart"
+        @click.capture="onCaptureClick"
+        @touchstart="onTouchStart"
+        @touchmove="onTouchMove"
+        @touchend="onTouchEnd"
+        @touchcancel="onTouchEnd"
+      >
         <DataTable
           v-if="view === 'table'"
           :fields="fields"
           :entries="visibleEntries"
           :selected="effectiveSelected"
           :sort="sort"
+          :multi-select="multiSelect"
           @select="selectWithModifiers"
           @toggle-all="toggleAll"
           @sort="onSort"
@@ -409,6 +489,7 @@ async function pickNewLocation() {
           :fields="fields"
           :entries="visibleEntries"
           :selected="effectiveSelected"
+          :multi-select="multiSelect"
           @select="selectWithModifiers"
           @open="(id) => (openEntryId = id)"
         />

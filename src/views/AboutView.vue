@@ -58,7 +58,6 @@ function openRelease() {
     </header>
 
     <div class="about-card card">
-      <img src="/icon.svg" alt="" class="about-mark" />
       <img src="/logo-text.svg" alt="" class="about-logo" />
       <p class="meta version">v{{ t.version }}</p>
       <p class="hint tagline">{{ t.settings.aboutLine }}</p>
@@ -120,15 +119,10 @@ function openRelease() {
   text-align: center;
 }
 
-.about-mark {
-  width: 64px;
-  height: 64px;
-  margin-bottom: 10px;
-}
-
 .about-logo {
-  height: 30px;
+  height: 40px;
   width: auto;
+  margin-bottom: 6px;
 }
 
 .version {
