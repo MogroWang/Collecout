@@ -104,6 +104,8 @@ export interface NormalizedTable {
   header: string[]
   rows: string[][]
   layout: 'headerTop' | 'headerLeft'
+  /** 每条数据（rows[i]）在原工作表中的 0 起始行号；headerLeft 布局为原列号 */
+  sourceMap?: number[]
 }
 
 /**
@@ -140,15 +142,22 @@ export function looksHeaderLeft(grid: string[][]): boolean {
   return grid.length >= width * 2
 }
 
-/** 按布局预设整理表格；auto 时现场判断并回传实际采用的布局 */
-export function applyTableLayout(table: { header: string[]; rows: string[][] }, layout: TableLayout): NormalizedTable {
+/** 按布局预设整理表格；auto 时现场判断并回传实际采用的布局。
+ *  rowMap：原表格各行在工作表中的 0 起始行号（含表头行），用于把数据行对回工作表行。 */
+export function applyTableLayout(
+  table: { header: string[]; rows: string[][]; rowMap?: number[] },
+  layout: TableLayout,
+): NormalizedTable {
+  const dataCount = table.rows.length
   if (layout === 'headerLeft') {
-    return { ...transposeGrid([table.header, ...table.rows]), layout: 'headerLeft' }
+    return { ...transposeGrid([table.header, ...table.rows]), layout: 'headerLeft', sourceMap: table.rows.map((_, i) => i + 1) }
   }
   if (layout === 'auto' && looksHeaderLeft([table.header, ...table.rows])) {
-    return { ...transposeGrid([table.header, ...table.rows]), layout: 'headerLeft' }
+    return { ...transposeGrid([table.header, ...table.rows]), layout: 'headerLeft', sourceMap: table.rows.map((_, i) => i + 1) }
   }
-  return { header: table.header, rows: table.rows, layout: 'headerTop' }
+  const sourceMap = table.rowMap ? table.rowMap.slice(1) : table.rows.map((_, i) => i + 1)
+  void dataCount
+  return { header: table.header, rows: table.rows, layout: 'headerTop', sourceMap }
 }
 
 function normName(s: string): string {
@@ -175,7 +184,7 @@ export interface InferredImport {
   mode: 'table' | 'document'
   tableIndex?: number
   /** 整理后的表格（已按布局预设转置）；仅表格模式返回 */
-  table?: { header: string[]; rows: string[][] }
+  table?: { header: string[]; rows: string[][]; sourceMap?: number[] }
   /** auto 布局现场判断出的实际布局 */
   resolvedLayout?: 'headerTop' | 'headerLeft'
 }
@@ -201,7 +210,7 @@ export function inferTemplate(doc: ParsedDoc, builtinTemplateId: string, opts: I
     let table = tables[0]
     if (explicit) table = tables[opts.tableIndex as number]
     else for (const t of tables) if (t.rows.length > table.rows.length) table = t
-    const normalized = applyTableLayout({ header: table.header, rows: table.rows }, opts.layout ?? 'auto')
+    const normalized = applyTableLayout({ header: table.header, rows: table.rows, rowMap: table.rowMap }, opts.layout ?? 'auto')
     const fields: FieldDef[] = normalized.header.slice(0, MAX_FIELDS).map((name, i) => {
       const samples = normalized.rows.slice(0, 20).map((r) => r[i] ?? '')
       return {
@@ -214,7 +223,7 @@ export function inferTemplate(doc: ParsedDoc, builtinTemplateId: string, opts: I
     return {
       mode: 'table',
       tableIndex: doc.blocks.indexOf(table),
-      table: { header: normalized.header, rows: normalized.rows },
+      table: { header: normalized.header, rows: normalized.rows, sourceMap: normalized.sourceMap },
       resolvedLayout: normalized.layout,
       template: {
         id: builtinTemplateId,

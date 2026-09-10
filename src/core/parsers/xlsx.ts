@@ -19,23 +19,34 @@ export async function parseSheet(data: Uint8Array, fileName: string): Promise<Pa
   const wb = XLSX.read(data, { type: 'array', raw: false })
   const blocks: Block[] = []
   for (const name of wb.SheetNames) {
-    const rows = XLSX.utils.sheet_to_json<string[]>(wb.Sheets[name], {
+    // 保留空行占位以取得真实行号（图片锚点按工作表行号对齐，跳行会错位）
+    const allRows = XLSX.utils.sheet_to_json<string[]>(wb.Sheets[name], {
       header: 1,
-      blankrows: false,
+      blankrows: true,
       raw: false,
       defval: '',
     })
-    if (rows.length === 0) continue
-    const width = Math.max(...rows.map((r) => r.length))
+    if (allRows.length === 0) continue
+    const width = Math.max(...allRows.map((r) => r.length))
     const pad = (r: unknown[]) => {
       const cells = (r as unknown[]).map((c) => String(c ?? '').trim())
       return cells.length < width ? [...cells, ...Array(width - cells.length).fill('')] : cells
     }
-    const [head, ...body] = rows.map(pad)
+    const rowMap: number[] = []
+    const padded: string[][] = []
+    allRows.forEach((r, idx) => {
+      if (!r.some((c) => String(c ?? '').trim() !== '')) return
+      padded.push(pad(r))
+      rowMap.push(idx)
+    })
+    const [head, ...body] = padded
     if (!head || head.every((c) => c === '')) continue
     // 末行若整行为空则丢弃
-    while (body.length > 0 && body[body.length - 1].every((c) => c === '')) body.pop()
-    blocks.push({ type: 'table', header: head, rows: body, source: name })
+    while (body.length > 0 && body[body.length - 1].every((c) => c === '')) {
+      body.pop()
+      rowMap.pop()
+    }
+    blocks.push({ type: 'table', header: head, rows: body, source: name, rowMap })
   }
   let images: ExtractedImage[] = []
   try {

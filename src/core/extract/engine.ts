@@ -7,6 +7,10 @@ export interface DraftEntry {
   values: Record<string, EntryValue>
   confidence: Record<string, number>
   sourceRef: SourceRef
+  /** 表格模式下该草稿在工作表中的 0 起始行号（Excel 图片按行锚定映射用） */
+  sourceRow?: number
+  /** 首列标题栏布局时的 0 起始列号 */
+  sourceCol?: number
 }
 
 export interface DocumentExtraction {
@@ -43,6 +47,7 @@ export function extractFromTable(
   mapping: Record<string, number>,
   scores: Record<string, number>,
   sourceRef: Omit<SourceRef, 'locator'> & { locator: (rowIdx: number) => string },
+  sourcePos?: (rowIdx: number) => { sourceRow?: number; sourceCol?: number },
 ): DraftEntry[] {
   const entries: DraftEntry[] = []
   rows.forEach((row, i) => {
@@ -60,7 +65,12 @@ export function extractFromTable(
       confidence[field.id] = ok ? (scores[field.id] ?? 0.7) : 0.4
     }
     if (any) {
-      entries.push({ values, confidence, sourceRef: { fileName: sourceRef.fileName, locator: sourceRef.locator(i) } })
+      entries.push({
+        values,
+        confidence,
+        sourceRef: { fileName: sourceRef.fileName, locator: sourceRef.locator(i) },
+        ...(sourcePos ? sourcePos(i) : null),
+      })
     }
   })
   return entries

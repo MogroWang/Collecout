@@ -150,6 +150,8 @@ export interface AppendResult {
   added: number
   overwritten: number
   skipped: number
+  /** 与传入 drafts 下标对齐的最终条目；被跳过的冲突为 null */
+  entries: (Entry | null)[]
 }
 
 export const useLibrariesStore = defineStore('libraries', {
@@ -277,24 +279,15 @@ export const useLibrariesStore = defineStore('libraries', {
       persist(lib)
       return records
     },
-    /**
-     * 把带单元格锚点的图片映射到对应条目：
-     * 表格模式下行锚点 → 该行的条目、列锚点 → 该列的条目；映射不上的仅留在来源档案里。
-     */
-    async attachEntryImages(id: string, sourceFileName: string, imageRecords: StoredFile[]): Promise<void> {
+    /** 把图片按结构化映射（锚点 → 条目）挂到条目上；映射不上的仅留在来源档案里 */
+    async attachEntryImages(id: string, pairs: { entryId: string; storedAs: string }[]): Promise<void> {
       const lib = this.byId(id)
-      if (!lib) return
+      if (!lib || pairs.length === 0) return
       let changed = false
-      for (const rec of imageRecords) {
-        if (!rec.anchor) continue
-        const { sheet, row, col } = rec.anchor
-        const rowLoc = `「${sheet}」第 ${row + 1} 行`
-        const colLoc = `「${sheet}」第 ${col + 1} 列`
-        const entry = lib.entries.find(
-          (e) => e.sourceRef.fileName === sourceFileName && (e.sourceRef.locator === rowLoc || e.sourceRef.locator === colLoc),
-        )
+      for (const p of pairs) {
+        const entry = lib.entries.find((e) => e.id === p.entryId)
         if (!entry) continue
-        entry.images = [...(entry.images ?? []), rec.storedAs]
+        entry.images = [...(entry.images ?? []), p.storedAs]
         changed = true
       }
       if (changed) persist(lib)
@@ -393,9 +386,9 @@ export const useLibrariesStore = defineStore('libraries', {
       source: { fileName: string; kind: SourceKind },
       sourceFields: FieldDef[] = [],
       options: AppendOptions = {},
-    ): Promise<AppendResult> {
+    ): Promise<AppendResult & { /** 与 drafts 下标对齐的最终条目；被跳过的冲突为 null */ entries: (Entry | null)[] }> {
       const lib = this.byId(id)
-      if (!lib) return { added: 0, overwritten: 0, skipped: 0 }
+      if (!lib) return { added: 0, overwritten: 0, skipped: 0, entries: [] }
       if (!Array.isArray(lib.fields)) lib.fields = []
 
       const byName = new Map<string, FieldDef>()
@@ -420,7 +413,8 @@ export const useLibrariesStore = defineStore('libraries', {
       }
 
       const fresh: Entry[] = []
-      const result: AppendResult = { added: 0, overwritten: 0, skipped: 0 }
+      const aligned: (Entry | null)[] = []
+      const result: AppendResult = { added: 0, overwritten: 0, skipped: 0, entries: [] }
       const now = new Date().toISOString()
       drafts.forEach((d, draftIndex) => {
         const entry = newEntry(id, d.sourceRef)
@@ -435,6 +429,7 @@ export const useLibrariesStore = defineStore('libraries', {
         const existing = key === '' ? undefined : existingKeys.get(key)
         if (!existing) {
           fresh.push(entry)
+          aligned.push(entry)
           if (key !== '') existingKeys.set(key, entry)
           return
         }
@@ -444,6 +439,7 @@ export const useLibrariesStore = defineStore('libraries', {
           existing.confidence = { ...entry.confidence }
           existing.sourceRef = entry.sourceRef
           existing.updatedAt = now
+          aligned.push(existing)
           result.overwritten++
           return
         }
@@ -453,14 +449,17 @@ export const useLibrariesStore = defineStore('libraries', {
           existing.confidence = { ...entry.confidence }
           existing.sourceRef = entry.sourceRef
           existing.updatedAt = now
+          aligned.push(existing)
           result.overwritten++
         } else {
+          aligned.push(null)
           result.skipped++
         }
       })
 
       lib.entries.push(...fresh)
       result.added = fresh.length
+      result.entries = aligned
       const existingSource = lib.sources.find((s) => s.fileName === source.fileName)
       const total = result.added + result.overwritten
       if (existingSource) {

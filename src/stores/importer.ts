@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import type { ParsedDoc } from '../core/parsers/types'
 import type { ExtractedImage } from '../core/parsers/xlsx'
-import type { FieldDef, StoredFile, Template } from '../core/models'
+import type { Entry, FieldDef, StoredFile, Template } from '../core/models'
 import { parseFile } from '../core/parsers'
 import type { DraftEntry } from '../core/extract'
 import { extractFromDocument, extractFromTable, inferTemplate, mergeFieldsByName, suggestColumnMapping, applyTableLayout, type TableLayout } from '../core/extract'
@@ -13,6 +13,8 @@ export interface TableCandidate {
   label: string
   header: string[]
   rows: string[][]
+  /** rows[i]（含表头行）在工作表中的 0 起始行号 */
+  rowMap?: number[]
 }
 
 /** 一个待导入文件：桌面端带绝对路径（可复制存档），其他平台带 File 对象 */
@@ -47,6 +49,8 @@ export interface ImportFileState {
   inferred: Template | null
   tableHeader: string[] | null
   tableRows: string[][] | null
+  /** 每条数据在工作表中的 0 起始行号（headerLeft 时为列号） */
+  tableSourceMap: number[] | null
   tableLabel: string | null
   mapping: Record<string, number>
   mappingScores: Record<string, number>
@@ -83,6 +87,7 @@ function blankFileState(ref: ImportFileRef): ImportFileState {
     inferred: null,
     tableHeader: null,
     tableRows: null,
+    tableSourceMap: null,
     tableLabel: null,
     mapping: {},
     mappingScores: {},
@@ -139,7 +144,7 @@ export const useImporterStore = defineStore('importer', {
           rx.images = rx.doc.images ?? []
           rx.tables = rx.doc.blocks
             .filter((b): b is Extract<ParsedDoc['blocks'][number], { type: 'table' }> => b.type === 'table')
-            .map((b) => ({ label: b.source ?? rx.doc!.fileName, header: b.header, rows: b.rows }))
+            .map((b) => ({ label: b.source ?? rx.doc!.fileName, header: b.header, rows: b.rows, rowMap: b.rowMap }))
           // 默认聚焦行数最多的工作表
           let best = 0
           for (let i = 0; i < rx.tables.length; i++) {
@@ -192,6 +197,7 @@ export const useImporterStore = defineStore('importer', {
       f.inferred = null
       f.tableHeader = null
       f.tableRows = null
+      f.tableSourceMap = null
       f.tableLabel = null
       f.mapping = {}
       f.mappingScores = {}
@@ -211,6 +217,7 @@ export const useImporterStore = defineStore('importer', {
           const candidate = f.tables[f.activeTable]
           f.tableHeader = inferred.table.header
           f.tableRows = inferred.table.rows
+          f.tableSourceMap = inferred.table.sourceMap ?? null
           f.tableLabel = candidate?.label ?? f.doc.fileName
           const suggestion = suggestColumnMapping(inferred.table.header, inferred.template, inferred.table.rows.slice(0, 20))
           f.mapping = suggestion.mapping
@@ -227,6 +234,7 @@ export const useImporterStore = defineStore('importer', {
           f.resolvedLayout = normalized.layout
           f.tableHeader = normalized.header
           f.tableRows = normalized.rows
+          f.tableSourceMap = normalized.sourceMap ?? null
           f.tableLabel = candidate.label
           const suggestion = suggestColumnMapping(normalized.header, tpl, normalized.rows.slice(0, 20))
           f.mapping = suggestion.mapping
@@ -242,11 +250,20 @@ export const useImporterStore = defineStore('importer', {
       if (!f.doc || f.mode === null || !f.inferred) return
       const template = f.inferred
       if (f.mode === 'table' && f.tableHeader && f.tableRows) {
-        const unit = f.resolvedLayout === 'headerLeft' ? '列' : '行'
-        f.drafts = extractFromTable(f.tableRows, template, f.mapping, f.mappingScores, {
-          fileName: f.doc.fileName,
-          locator: (i) => `「${f.tableLabel}」第 ${i + 2} ${unit}`,
-        })
+        const sourceMap = f.tableSourceMap ?? []
+        const isCol = f.resolvedLayout === 'headerLeft'
+        const unit = isCol ? '列' : '行'
+        f.drafts = extractFromTable(
+          f.tableRows,
+          template,
+          f.mapping,
+          f.mappingScores,
+          {
+            fileName: f.doc.fileName,
+            locator: (i) => `「${f.tableLabel}」第 ${(sourceMap[i] ?? i + 1) + 1} ${unit}`,
+          },
+          (i) => (isCol ? { sourceCol: sourceMap[i] ?? i + 1 } : { sourceRow: sourceMap[i] ?? i + 1 }),
+        )
       } else {
         f.drafts = extractFromDocument(f.doc.blocks, template, f.doc.fileName).entries
       }
@@ -293,7 +310,7 @@ export const useImporterStore = defineStore('importer', {
             ? await libraries.addEntries(libId, f.drafts, { fileName: f.doc.fileName, kind: f.doc.kind }, f.inferred?.fields ?? [], {
                 decisions: decisions[f.id],
               })
-            : { added: 0, overwritten: 0, skipped: 0 }
+            : { added: 0, overwritten: 0, skipped: 0, entries: [] as (Entry | null)[] }
         total.added += r.added
         total.overwritten += r.overwritten
         total.skipped += r.skipped
@@ -313,9 +330,22 @@ export const useImporterStore = defineStore('importer', {
             fileMode,
           )
         }
-        // 把图片按单元格锚点映射到条目（表格模式：行/列与条目一一对应）
-        if (records.some((rec) => rec.kind === 'image')) {
-          await libraries.attachEntryImages(libId, f.doc.fileName, records.filter((rec) => rec.kind === 'image'))
+        // 图片按锚点映射到条目：锚点必须属于本次导入的工作表，行/列与草稿的结构化位置对齐
+        const imageRecords = records.filter((rec) => rec.kind === 'image')
+        if (imageRecords.length > 0 && r.entries.length > 0) {
+          const label = f.tableLabel ?? ''
+          const isCol = f.drafts.some((d) => d.sourceCol !== undefined)
+          const pairs: { entryId: string; storedAs: string }[] = []
+          for (const rec of imageRecords) {
+            if (!rec.anchor || rec.anchor.sheet !== label) continue
+            const di = f.drafts.findIndex((d) =>
+              isCol ? d.sourceCol === rec.anchor!.col : d.sourceRow === rec.anchor!.row,
+            )
+            if (di === -1) continue
+            const entry = r.entries[di]
+            if (entry) pairs.push({ entryId: entry.id, storedAs: rec.storedAs })
+          }
+          if (pairs.length > 0) await libraries.attachEntryImages(libId, pairs)
         }
       }
       return { libraryId: libId, count: total.added + total.overwritten, ...total }
