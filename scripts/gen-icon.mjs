@@ -500,7 +500,7 @@ emit(
 // 1024 源图存档
 emit('app-icon.png', winStyle(1024))
 
-// Android：legacy 启动器（方 / 圆）+ 自适应前景
+// Android：legacy 方形启动器（白底圆角）+ 圆形启动器（透明底，仅 logo 本身，不套圆形背景）+ 自适应前景
 const dpi = { mdpi: 1, hdpi: 1.5, xhdpi: 2, xxhdpi: 3, xxxhdpi: 4 }
 for (const [d, k] of Object.entries(dpi)) {
   const dir = join(OUT_ANDROID, `mipmap-${d}`)
@@ -508,7 +508,7 @@ for (const [d, k] of Object.entries(dpi)) {
   const legacy = Math.round(48 * k)
   const fg = Math.round(108 * k)
   writeFileSync(join(dir, 'ic_launcher.png'), winStyle(legacy, 0.2))
-  writeFileSync(join(dir, 'ic_launcher_round.png'), winStyle(legacy, 0.5))
+  writeFileSync(join(dir, 'ic_launcher_round.png'), androidFg(legacy))
   writeFileSync(join(dir, 'ic_launcher_foreground.png'), androidFg(fg))
   jobs.push(`android/mipmap-${d}/*`)
 }
