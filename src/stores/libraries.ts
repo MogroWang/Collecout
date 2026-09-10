@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import type { Entry, FieldDef, Library, SourceKind, StoredFile } from '../core/models'
 import { newEntry, uuid } from '../core/models'
 import { BUILTIN_TEMPLATES, inferKindFromSamples, type DraftEntry } from '../core/extract'
+import { crc32 } from '../core/export/docx'
 import { externalLibraryDir, isExternalLibrary, repo } from '../core/storage/repo'
 
 function libFile(id: string): string {
@@ -232,8 +233,13 @@ export const useLibrariesStore = defineStore('libraries', {
       if (!lib) return []
       const now = new Date().toISOString()
       const records: StoredFile[] = []
+      // 同字节文件（如同一张 Excel 图片被多个单元格引用）只落盘一份
+      const dedupe = new Map<string, string>()
       for (const f of stored) {
-        const storedAs = await pickStoredName(lib, f.name)
+        const dedupeKey = f.bytes ? `${f.bytes.length}:${crc32(f.bytes)}` : null
+        const reused = dedupeKey ? dedupe.get(dedupeKey) : undefined
+        const storedAs = reused ?? (await pickStoredName(lib, f.name))
+        if (dedupeKey && !reused) dedupe.set(dedupeKey, storedAs)
         const rec: StoredFile = {
           id: uuid(),
           name: f.name,
@@ -242,6 +248,10 @@ export const useLibrariesStore = defineStore('libraries', {
           kind: f.isImage ? 'image' : 'source',
           anchor: f.anchor,
           importedAt: now,
+        }
+        if (reused) {
+          records.push(rec)
+          continue
         }
         if (fileMode === 'link' && !f.isImage) {
           rec.sourcePath = f.srcAbs
