@@ -42,9 +42,13 @@ export interface StorageAdapter {
   removeTree?(rel: string): Promise<void>
   /** 把字节写入数据根内（导入附件用）；返回 false 表示平台不支持 */
   writeBinary?(rel: string, bytes: Uint8Array): Promise<boolean>
+  /** 读取数据根内的二进制（Excel 图片等）；未实现表示平台不支持 */
+  readBinary?(rel: string): Promise<Uint8Array | null>
 
   /** 相对路径 → 绝对路径（桌面端） */
   absOf?(rel: string): Promise<string>
+  /** 读取绝对路径文件的字节（桌面端，展示库内图片） */
+  readBytesAbs?(abs: string): Promise<Uint8Array | null>
   /** 递归复制目录（桌面端，库在内部 ↔ 外部之间搬运用） */
   copyDir?(srcAbs: string, destAbs: string): Promise<void>
   /** 删除绝对路径的目录树（桌面端，外部库 / 内部库目录都走这里） */

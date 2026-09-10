@@ -1,3 +1,5 @@
+import type { ExtractedImage } from './xlsx'
+
 export type Block =
   | { type: 'heading'; level: number; text: string }
   | { type: 'para'; text: string }
@@ -11,6 +13,8 @@ export interface ParsedDoc {
   fileName: string
   kind: SourceKind
   blocks: Block[]
+  /** xlsx 单元格图片（其他格式无） */
+  images?: ExtractedImage[]
 }
 
 export function countBlocks(blocks: Block[]) {

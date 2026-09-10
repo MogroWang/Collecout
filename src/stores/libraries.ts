@@ -219,12 +219,13 @@ export const useLibrariesStore = defineStore('libraries', {
     },
     /**
      * 把本次导入的源文件存档进库（复制副本或记录原位置），并与同名来源合并。
-     * stored 里每个文件带 srcAbs（桌面端复制）或 bytes（安卓写入）。
+     * stored 里每个文件带 srcAbs（桌面端复制）或 bytes（安卓写入）；
+     * isImage + anchor 标记 Excel 单元格图片。
      */
     async addSource(
       id: string,
       source: { fileName: string; kind: SourceKind },
-      stored: { name: string; srcAbs?: string; bytes?: Uint8Array }[],
+      stored: { name: string; srcAbs?: string; bytes?: Uint8Array; isImage?: boolean; anchor?: { sheet: string; row: number; col: number } }[],
       fileMode: 'copy' | 'link',
     ): Promise<StoredFile[]> {
       const lib = this.byId(id)
@@ -238,9 +239,11 @@ export const useLibrariesStore = defineStore('libraries', {
           name: f.name,
           storedAs,
           mode: fileMode,
+          kind: f.isImage ? 'image' : 'source',
+          anchor: f.anchor,
           importedAt: now,
         }
-        if (fileMode === 'link') {
+        if (fileMode === 'link' && !f.isImage) {
           rec.sourcePath = f.srcAbs
         } else if (f.srcAbs !== undefined) {
           const ok = await repo().copyFileIntoLibrary(lib, f.srcAbs, storedAs)
@@ -263,6 +266,38 @@ export const useLibrariesStore = defineStore('libraries', {
       doc.files = [...(doc.files ?? []), ...records]
       persist(lib)
       return records
+    },
+    /**
+     * 把带单元格锚点的图片映射到对应条目：
+     * 表格模式下行锚点 → 该行的条目、列锚点 → 该列的条目；映射不上的仅留在来源档案里。
+     */
+    async attachEntryImages(id: string, sourceFileName: string, imageRecords: StoredFile[]): Promise<void> {
+      const lib = this.byId(id)
+      if (!lib) return
+      let changed = false
+      for (const rec of imageRecords) {
+        if (!rec.anchor) continue
+        const { sheet, row, col } = rec.anchor
+        const rowLoc = `「${sheet}」第 ${row + 1} 行`
+        const colLoc = `「${sheet}」第 ${col + 1} 列`
+        const entry = lib.entries.find(
+          (e) => e.sourceRef.fileName === sourceFileName && (e.sourceRef.locator === rowLoc || e.sourceRef.locator === colLoc),
+        )
+        if (!entry) continue
+        entry.images = [...(entry.images ?? []), rec.storedAs]
+        changed = true
+      }
+      if (changed) persist(lib)
+    },
+    /** 读取库内图片字节，返回 Blob（展示用）；平台不支持或未存储时为 null */
+    async readImage(id: string, storedAs: string): Promise<Blob | null> {
+      const lib = this.byId(id)
+      if (!lib) return null
+      const bytes = await repo().readLibraryBinary(lib, storedAs)
+      if (!bytes) return null
+      const ext = storedAs.split('.').pop()?.toLowerCase() ?? ''
+      const mime = ext === 'png' ? 'image/png' : ext === 'gif' ? 'image/gif' : ext === 'webp' ? 'image/webp' : ext === 'bmp' ? 'image/bmp' : 'image/jpeg'
+      return new Blob([bytes.slice().buffer as ArrayBuffer], { type: mime })
     },
     async remove(id: string) {
       const lib = this.byId(id)

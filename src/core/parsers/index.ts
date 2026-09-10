@@ -19,7 +19,7 @@ export async function parseFile(fileName: string, data: Uint8Array): Promise<Par
     return parseDocx(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer, fileName)
   }
   if (SHEET_EXT.test(fileName)) {
-    return parseSheet(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer, fileName)
+    return parseSheet(data, fileName)
   }
   if (TEXT_EXT.test(fileName)) {
     const text = new TextDecoder().decode(data)

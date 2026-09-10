@@ -37,6 +37,10 @@ export interface StoredFile {
   storedAs: string
   /** copy = 已复制进库文件夹；link = 保留在原位置，仅记录路径 */
   mode: 'copy' | 'link'
+  /** source = 导入的源文件；image = Excel 单元格图片 */
+  kind?: 'source' | 'image'
+  /** kind = image 时的单元格锚点（0 起始行列） */
+  anchor?: { sheet: string; row: number; col: number }
   /** mode = link 时的原始绝对路径 */
   sourcePath?: string
   importedAt: string
@@ -48,6 +52,8 @@ export interface Entry {
   values: Record<string, EntryValue>
   confidence: Record<string, number>
   sourceRef: SourceRef
+  /** 随条目展示的图片（库文件夹 files/ 内的存储名，来自 Excel 单元格） */
+  images?: string[]
   createdAt: string
   updatedAt: string
 }

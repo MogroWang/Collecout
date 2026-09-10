@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import type { ParsedDoc } from '../core/parsers/types'
-import type { FieldDef, Template } from '../core/models'
+import type { ExtractedImage } from '../core/parsers/xlsx'
+import type { FieldDef, StoredFile, Template } from '../core/models'
 import { parseFile } from '../core/parsers'
 import type { DraftEntry } from '../core/extract'
 import { extractFromDocument, extractFromTable, inferTemplate, mergeFieldsByName, suggestColumnMapping, applyTableLayout, type TableLayout } from '../core/extract'
@@ -29,6 +30,8 @@ export interface ImportFileState {
   /** 非桌面端的 File 对象（解析 / 字节读取用） */
   file?: File
   doc: ParsedDoc | null
+  /** xlsx 单元格图片（parseSheet 提取） */
+  images: ExtractedImage[]
   error: string | null
   mode: 'table' | 'document' | null
   /** 全部候选表格：xlsx 每个工作表一个，docx 每张表一个 */
@@ -69,6 +72,7 @@ function blankFileState(ref: ImportFileRef): ImportFileState {
     path: ref.path,
     file: ref.file,
     doc: null,
+    images: [],
     error: null,
     mode: null,
     tables: [],
@@ -132,6 +136,7 @@ export const useImporterStore = defineStore('importer', {
         try {
           const bytes = await readBytes(ref)
           rx.doc = await parseFile(ref.name, bytes)
+          rx.images = rx.doc.images ?? []
           rx.tables = rx.doc.blocks
             .filter((b): b is Extract<ParsedDoc['blocks'][number], { type: 'table' }> => b.type === 'table')
             .map((b) => ({ label: b.source ?? rx.doc!.fileName, header: b.header, rows: b.rows }))
@@ -296,8 +301,21 @@ export const useImporterStore = defineStore('importer', {
         const stored: { name: string; srcAbs?: string; bytes?: Uint8Array }[] = []
         if (f.path) stored.push({ name: f.doc.fileName, srcAbs: f.path })
         else if (fileMode === 'copy' && f.file) stored.push({ name: f.doc.fileName, bytes: new Uint8Array(await f.file.arrayBuffer()) })
-        if (stored.length > 0) {
-          await libraries.addSource(libId, { fileName: f.doc.fileName, kind: f.doc.kind }, stored, fileMode)
+        // Excel 单元格图片一并存档（带单元格锚点）
+        const storedImages: { name: string; bytes: Uint8Array; anchor: { sheet: string; row: number; col: number } }[] =
+          f.images.map((img) => ({ name: img.name, bytes: img.bytes, anchor: { sheet: img.sheet, row: img.row, col: img.col } }))
+        let records: StoredFile[] = []
+        if (stored.length > 0 || storedImages.length > 0) {
+          records = await libraries.addSource(
+            libId,
+            { fileName: f.doc.fileName, kind: f.doc.kind },
+            [...stored, ...storedImages.map((s) => ({ ...s, isImage: true }))],
+            fileMode,
+          )
+        }
+        // 把图片按单元格锚点映射到条目（表格模式：行/列与条目一一对应）
+        if (records.some((rec) => rec.kind === 'image')) {
+          await libraries.attachEntryImages(libId, f.doc.fileName, records.filter((rec) => rec.kind === 'image'))
         }
       }
       return { libraryId: libId, count: total.added + total.overwritten, ...total }

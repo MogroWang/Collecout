@@ -139,5 +139,17 @@ export function createCapacitorAdapter(): StorageAdapter {
       })
       return true
     },
+    async readBinary(rel) {
+      try {
+        const { data } = await Filesystem.readFile({ path: `${DATA_DIR}/${rel}`, directory: Directory.External })
+        if (typeof data !== 'string') return null
+        const bin = atob(data)
+        const bytes = new Uint8Array(bin.length)
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+        return bytes
+      } catch {
+        return null
+      }
+    },
   }
 }

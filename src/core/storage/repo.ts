@@ -305,6 +305,22 @@ export class Repo {
     return false
   }
 
+  /** 读取库文件夹 files/ 内的二进制（Excel 图片等，条目详情展示用） */
+  async readLibraryBinary(lib: Library, storedAs: string): Promise<Uint8Array | null> {
+    const t = this.attachmentTarget(lib, storedAs)
+    try {
+      if (t.rel) {
+        if (this.adapter.readBinary) return await this.adapter.readBinary(t.rel)
+        if (this.adapter.absOf && this.adapter.readBytesAbs) return await this.adapter.readBytesAbs(await this.adapter.absOf(t.rel))
+        return null
+      }
+      if (t.abs && this.adapter.readBytesAbs) return await this.adapter.readBytesAbs(t.abs)
+    } catch {
+      return null
+    }
+    return null
+  }
+
   /* ---------- 数据根目录（OOBE / 设置页） ---------- */
 
   /** 首次启动判定与默认位置（仅桌面端有实现） */

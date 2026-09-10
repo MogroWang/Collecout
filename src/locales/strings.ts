@@ -325,6 +325,7 @@ export const t = {
     title: '条目详情',
     sourceFrom: (f: string, l: string) => `来自「${f}」 ${l}`,
     noValue: '未填写',
+    images: '图片',
     deleteConfirm: '确定删除这条条目？',
   },
 } as const

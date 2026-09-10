@@ -268,9 +268,26 @@ export function createTauriAdapter(): StorageAdapter {
       await fs.writeFile(p, bytes, opts as Parameters<typeof fs.writeFile>[2])
       return true
     },
+    async readBinary(rel) {
+      const fs = await fsReady()
+      const { path: p, opts } = await targetOf(rel)
+      try {
+        return await fs.readFile(p, opts as Parameters<typeof fs.readFile>[1])
+      } catch {
+        return null
+      }
+    },
     async absOf(rel) {
       const { path } = await targetOf(rel)
       return path
+    },
+    async readBytesAbs(abs) {
+      const fs = await fsReady()
+      try {
+        return await fs.readFile(abs)
+      } catch {
+        return null
+      }
     },
     async copyDir(srcAbs, destAbs) {
       const fs = await fsReady()

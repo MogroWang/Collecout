@@ -34,7 +34,7 @@ describe('htmlToBlocks', () => {
 })
 
 describe('parseSheet Excel 解析', () => {
-  it('每个 sheet 一个表格块，首行为表头', () => {
+  it('每个 sheet 一个表格块，首行为表头', async () => {
     const wb = XLSX.utils.book_new()
     const ws = XLSX.utils.aoa_to_sheet([
       ['日期', '项目', '金额'],
@@ -43,8 +43,8 @@ describe('parseSheet Excel 解析', () => {
     ])
     XLSX.utils.book_append_sheet(wb, ws, '八月')
     const out = XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer
-    const buf = new Uint8Array(out).buffer as ArrayBuffer
-    const doc = parseSheet(buf, '流水.xlsx')
+    const bytes = new Uint8Array(out)
+    const doc = await parseSheet(bytes, '流水.xlsx')
     expect(doc.kind).toBe('xlsx')
     expect(doc.blocks).toHaveLength(1)
     const table = doc.blocks[0]
@@ -58,11 +58,11 @@ describe('parseSheet Excel 解析', () => {
       ])
     }
   })
-  it('跳过空 sheet', () => {
+  it('跳过空 sheet', async () => {
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['']]), '空表')
     const out = XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer
-    const buf = new Uint8Array(out).buffer as ArrayBuffer
-    expect(parseSheet(buf, '空.xlsx').blocks).toHaveLength(0)
+    const doc = await parseSheet(new Uint8Array(out), '空.xlsx')
+    expect(doc.blocks).toHaveLength(0)
   })
 })
