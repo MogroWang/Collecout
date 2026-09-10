@@ -4,6 +4,7 @@ import type { FieldDef, FieldKind } from '../core/models'
 import type { FilterRule, FilterState } from '../core/query/filter'
 import { t } from '../locales/strings'
 import AppIcon from './AppIcon.vue'
+import AppSelect from './AppSelect.vue'
 
 const props = defineProps<{ fields: FieldDef[]; state: FilterState }>()
 const emit = defineEmits<{ 'update:state': [value: FilterState] }>()
@@ -91,10 +92,13 @@ function ruleText(rule: FilterRule): string {
     </div>
 
     <div class="rule-form">
-      <select v-model="pickFieldId" class="select" :aria-label="t.filterPanel.pickField">
-        <option value="" disabled>{{ t.filterPanel.pickField }}</option>
-        <option v-for="field in props.fields" :key="field.id" :value="field.id">{{ field.name }}（{{ fieldLabel(field.kind) }}）</option>
-      </select>
+      <AppSelect
+        v-model="pickFieldId"
+        grow
+        :placeholder="t.filterPanel.pickField"
+        :aria-label="t.filterPanel.pickField"
+        :options="props.fields.map((f) => ({ value: f.id, label: `${f.name}（${fieldLabel(f.kind)}）` }))"
+      />
 
       <div v-if="pickField?.kind === 'date'" class="draft-row">
         <input v-model="draft.from" type="date" class="input" :aria-label="t.filterPanel.from" />
@@ -161,7 +165,7 @@ function ruleText(rule: FilterRule): string {
   gap: 8px;
 }
 
-.rule-form .select {
+.rule-form .sel {
   width: 100%;
 }
 

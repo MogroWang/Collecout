@@ -14,9 +14,20 @@ export interface TableCandidate {
   rows: string[][]
 }
 
+/** 一个待导入文件：桌面端带绝对路径（可复制存档），其他平台带 File 对象 */
+export interface ImportFileRef {
+  name: string
+  path?: string
+  file?: File
+}
+
 export interface ImportFileState {
   id: string
-  file: File
+  name: string
+  /** 桌面端的源文件绝对路径（复制存档用） */
+  path?: string
+  /** 非桌面端的 File 对象（解析 / 字节读取用） */
+  file?: File
   doc: ParsedDoc | null
   error: string | null
   mode: 'table' | 'document' | null
@@ -42,10 +53,21 @@ export interface ImportFileState {
 
 const AUTO_ID = 'tpl_auto'
 
-function blankFileState(file: File): ImportFileState {
+async function readBytes(ref: ImportFileRef): Promise<Uint8Array> {
+  if (ref.path) {
+    const { readFile } = await import('@tauri-apps/plugin-fs')
+    return await readFile(ref.path)
+  }
+  if (ref.file) return new Uint8Array(await ref.file.arrayBuffer())
+  throw new Error('没有可读取的文件内容')
+}
+
+function blankFileState(ref: ImportFileRef): ImportFileState {
   return {
     id: crypto.randomUUID(),
-    file,
+    name: ref.name,
+    path: ref.path,
+    file: ref.file,
     doc: null,
     error: null,
     mode: null,
@@ -101,14 +123,15 @@ export const useImporterStore = defineStore('importer', {
       this.targetLibId = ''
       this.busy = false
     },
-    async addFiles(list: File[]) {
-      for (const file of list) {
-        const state = blankFileState(file)
+    async addFiles(list: ImportFileRef[]) {
+      for (const ref of list) {
+        const state = blankFileState(ref)
         this.files.push(state)
         // 取回响应式代理后再异步赋值，直接改原始对象不会触发界面更新
         const rx = this.files[this.files.length - 1] as ImportFileState
         try {
-          rx.doc = await parseFile(file)
+          const bytes = await readBytes(ref)
+          rx.doc = await parseFile(ref.name, bytes)
           rx.tables = rx.doc.blocks
             .filter((b): b is Extract<ParsedDoc['blocks'][number], { type: 'table' }> => b.type === 'table')
             .map((b) => ({ label: b.source ?? rx.doc!.fileName, header: b.header, rows: b.rows }))
@@ -118,11 +141,12 @@ export const useImporterStore = defineStore('importer', {
             if (rx.tables[i].rows.length > rx.tables[best].rows.length) best = i
           }
           rx.activeTable = best
-          if (rx.doc.blocks.length === 0) {
-            rx.error = `「${file.name}」里没有可识别的内容`
+          // 可解析的文件里一个内容块都没有才提示错误；附件文件（kind=file）不算错误
+          if (rx.doc.kind !== 'file' && rx.doc.blocks.length === 0) {
+            rx.error = `「${ref.name}」里没有可识别的内容`
           }
         } catch (err) {
-          rx.error = err instanceof Error ? err.message : `「${file.name}」解析失败`
+          rx.error = err instanceof Error ? err.message : `「${ref.name}」解析失败`
         }
       }
       if (this.templateId) this.prepareTemplate(this.templateId)
@@ -167,7 +191,7 @@ export const useImporterStore = defineStore('importer', {
       f.mapping = {}
       f.mappingScores = {}
       f.resolvedLayout = null
-      if (!f.doc) return
+      if (!f.doc || f.doc.kind === 'file') return
 
       if (this.templateId === AUTO_ID) {
         // 未主动选工作表时保持旧行为：按整篇文档判断模式，表格取行数最多的那张
@@ -235,15 +259,17 @@ export const useImporterStore = defineStore('importer', {
     },
     /**
      * 入库。新建库时可用 storageDir 指定独立存放位置；
+     * fileMode 决定源文件存档方式：'copy' 复制进库文件夹（默认），'link' 仅记录原位置（桌面端）；
      * 追加时通过 decisions 传递每个文件的冲突条目处理决定（draft 下标 → 覆盖/跳过）。
      */
     async commit(
       decisions: Record<string, Record<number, 'overwrite' | 'skip'>> = {},
       storageDir: string | null = null,
+      fileMode: 'copy' | 'link' = 'copy',
     ): Promise<{ libraryId: string; count: number; added: number; overwritten: number; skipped: number } | null> {
       const libraries = useLibrariesStore()
       const drafts = this.allDrafts
-      if (drafts.length === 0) return null
+      if (drafts.length === 0 && !this.files.some((f) => f.doc)) return null
 
       let libId = this.targetLibId
       if (this.targetMode === 'new') {
@@ -256,17 +282,23 @@ export const useImporterStore = defineStore('importer', {
 
       const total = { added: 0, overwritten: 0, skipped: 0 }
       for (const f of this.files) {
-        if (f.drafts.length === 0 || !f.doc) continue
-        const r = await libraries.addEntries(
-          libId,
-          f.drafts,
-          { fileName: f.doc.fileName, kind: f.doc.kind },
-          f.inferred?.fields ?? [],
-          { decisions: decisions[f.id] },
-        )
+        if (!f.doc) continue
+        const r =
+          f.drafts.length > 0
+            ? await libraries.addEntries(libId, f.drafts, { fileName: f.doc.fileName, kind: f.doc.kind }, f.inferred?.fields ?? [], {
+                decisions: decisions[f.id],
+              })
+            : { added: 0, overwritten: 0, skipped: 0 }
         total.added += r.added
         total.overwritten += r.overwritten
         total.skipped += r.skipped
+        // 源文件存档：copy 复制进库文件夹；link 记录原位置（仅桌面端有路径）
+        const stored: { name: string; srcAbs?: string; bytes?: Uint8Array }[] = []
+        if (f.path) stored.push({ name: f.doc.fileName, srcAbs: f.path })
+        else if (fileMode === 'copy' && f.file) stored.push({ name: f.doc.fileName, bytes: new Uint8Array(await f.file.arrayBuffer()) })
+        if (stored.length > 0) {
+          await libraries.addSource(libId, { fileName: f.doc.fileName, kind: f.doc.kind }, stored, fileMode)
+        }
       }
       return { libraryId: libId, count: total.added + total.overwritten, ...total }
     },

@@ -5,14 +5,14 @@ def keystorePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
 def keystoreAlias = System.getenv("ANDROID_KEYSTORE_ALIAS") ?: "collecout"
 
 android {
-    namespace "com.mogrowang.collecout"
+    namespace "com.mws.collecout"
     compileSdk rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.mogrowang.collecout"
+        applicationId "com.mws.collecout"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 2
-        versionName "0.2.0"
+        versionCode 3
+        versionName "0.4.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

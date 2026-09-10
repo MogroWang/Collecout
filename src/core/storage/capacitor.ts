@@ -91,5 +91,53 @@ export function createCapacitorAdapter(): StorageAdapter {
         return 'Android/data/…/files/collecout-data'
       }
     },
+
+    /* ---------- 库文件夹结构 ---------- */
+
+    async listSubdirs(dir) {
+      try {
+        const { files } = await Filesystem.readdir({ path: `${DATA_DIR}/${dir}`, directory: Directory.External })
+        return files.filter((f) => f.type === 'directory').map((f) => f.name)
+      } catch {
+        return []
+      }
+    },
+    async listTree(dir) {
+      const out: string[] = []
+      const walk = async (rel: string) => {
+        let files
+        try {
+          files = (await Filesystem.readdir({ path: `${DATA_DIR}/${dir}${rel === '' ? '' : `/${rel}`}`, directory: Directory.External })).files
+        } catch {
+          return
+        }
+        for (const f of files) {
+          if (f.type === 'directory') await walk(rel === '' ? f.name : `${rel}/${f.name}`)
+          else out.push(rel === '' ? f.name : `${rel}/${f.name}`)
+        }
+      }
+      await walk('')
+      return out
+    },
+    async removeTree(rel) {
+      try {
+        await Filesystem.rmdir({ path: `${DATA_DIR}/${rel}`, directory: Directory.External, recursive: true })
+      } catch {
+        /* 目录不存在视为成功 */
+      }
+      ensuredDirs.clear()
+    },
+    async writeBinary(rel, bytes) {
+      await ensureDir(rel)
+      let bin = ''
+      for (const b of bytes) bin += String.fromCharCode(b)
+      await Filesystem.writeFile({
+        path: `${DATA_DIR}/${rel}`,
+        directory: Directory.External,
+        data: btoa(bin),
+        recursive: true,
+      })
+      return true
+    },
   }
 }

@@ -7,19 +7,32 @@ interface StoredSettings {
   settings: Settings
 }
 
-/** 外部库注册表：记录独立存放的库文件位置（库文件自身也在 dataRoot 内作备份索引） */
+/** 外部库注册表：记录独立存放的库文件夹位置（库文件自身也在 dataRoot 内作备份索引） */
 interface LibraryIndex {
   external: { id: string; storagePath: string; fileName: string }[]
 }
 
 const EMPTY_INDEX: LibraryIndex = { external: [] }
 
+/** 0.4.0 起库 JSON 的固定名（库是文件夹：<dir>/library.json + files/） */
+export const LIBRARY_MANIFEST = 'library.json'
+
+/** 内部库的相对目录（库文件夹） */
+export function libraryDir(id: string): string {
+  return `libraries/${id}`
+}
+
 function libraryFile(id: string): string {
-  return `libraries/${id}.json`
+  return `${libraryDir(id)}/${LIBRARY_MANIFEST}`
+}
+
+/** 外部库的文件夹绝对路径（fileName 是文件夹名） */
+export function externalLibraryDir(lib: Pick<Library, 'storagePath' | 'fileName'>): string {
+  return `${lib.storagePath}/${lib.fileName}`
 }
 
 export function externalLibraryPath(lib: Pick<Library, 'storagePath' | 'fileName'>): string {
-  return `${lib.storagePath}/${lib.fileName}`
+  return `${externalLibraryDir(lib)}/${LIBRARY_MANIFEST}`
 }
 
 export function isExternalLibrary(lib: Pick<Library, 'storagePath' | 'fileName'>): boolean {
@@ -86,7 +99,7 @@ export class Repo {
     return templates
   }
 
-  /* ---------- 库：内部（数据文件夹）+ 外部（任意位置） ---------- */
+  /* ---------- 库：内部（数据文件夹）+ 外部（任意位置）。0.4.0 起库是文件夹 ---------- */
 
   private async loadLibraryIndex(): Promise<LibraryIndex> {
     const idx = await this.readJSON<LibraryIndex>('libraries/index.json', EMPTY_INDEX)
@@ -106,19 +119,68 @@ export class Repo {
     await this.saveLibraryIndex(idx)
   }
 
-  async loadLibraries(): Promise<Library[]> {
-    const names = await this.adapter.listFiles('libraries')
-    const libraries: Library[] = []
-    for (const name of names) {
-      if (!name.endsWith('.json') || name === 'index.json') continue
-      const lib = await this.readJSON<Library | null>(`libraries/${name}`, null)
-      if (lib && lib.id && Array.isArray(lib.entries)) libraries.push(lib)
+  /**
+   * 旧版（≤0.3）单文件库自动迁移为文件夹结构：
+   * - 内部：libraries/<id>.json → libraries/<id>/library.json（files/ 留空）；
+   * - 外部：<dir>/<name>.json → <dir>/<name>/library.json。
+   * 迁移在每次加载时幂等执行，失败静默跳过（旧文件保留，下次再试）。
+   */
+  private async migrateSingleFileLibraries(): Promise<void> {
+    try {
+      for (const name of await this.adapter.listFiles('libraries')) {
+        if (!name.endsWith('.json') || name === 'index.json') continue
+        const raw = await this.adapter.readText(`libraries/${name}`)
+        if (raw === null) continue
+        const lib = JSON.parse(raw) as Library
+        if (!lib.id) continue
+        await this.adapter.writeText(libraryFile(lib.id), raw)
+        await this.adapter.remove(`libraries/${name}`)
+      }
+    } catch {
+      /* 内部迁移失败不阻塞加载 */
     }
-    // 独立存放在其他位置的库：文件读不到（盘符未挂载等）时静默跳过
+    // 外部单文件库：fileName 以 .json 结尾的旧记录
+    try {
+      if (!this.adapter.readAbs) return
+      const idx = await this.loadLibraryIndex()
+      let dirty = false
+      for (const rec of idx.external) {
+        if (!rec.fileName.endsWith('.json')) continue
+        const oldPath = `${rec.storagePath}/${rec.fileName}`
+        const raw = await this.adapter.readAbs(oldPath)
+        if (raw === null) continue
+        const lib = JSON.parse(raw) as Library
+        if (!lib.id) continue
+        const folderName = rec.fileName.replace(/\.json$/i, '')
+        const dir = `${rec.storagePath}/${folderName}`
+        await this.adapter.writeAbs?.(`${dir}/${LIBRARY_MANIFEST}`, raw)
+        await this.adapter.removeAbs?.(oldPath)
+        rec.fileName = folderName
+        dirty = true
+      }
+      if (dirty) await this.saveLibraryIndex(idx)
+    } catch {
+      /* 外部迁移失败不阻塞加载 */
+    }
+  }
+
+  async loadLibraries(): Promise<Library[]> {
+    await this.migrateSingleFileLibraries()
+    const libraries: Library[] = []
+    // 内部库：libraries/<id>/library.json
+    for (const id of await this.adapter.listSubdirs?.('libraries') ?? []) {
+      const lib = await this.readJSON<Library | null>(`${libraryDir(id)}/${LIBRARY_MANIFEST}`, null)
+      if (lib && lib.id && Array.isArray(lib.entries)) {
+        lib.storagePath = null
+        lib.fileName = null
+        libraries.push(lib)
+      }
+    }
+    // 独立存放在其他位置的库：文件夹读不到（盘符未挂载等）时静默跳过
     for (const rec of (await this.loadLibraryIndex()).external) {
       if (libraries.some((l) => l.id === rec.id)) continue
       if (!this.adapter.readAbs) continue
-      const raw = await this.adapter.readAbs(`${rec.storagePath}/${rec.fileName}`)
+      const raw = await this.adapter.readAbs(externalLibraryPath({ storagePath: rec.storagePath, fileName: rec.fileName }))
       if (raw === null) continue
       try {
         const lib = JSON.parse(raw) as Library
@@ -134,54 +196,113 @@ export class Repo {
     return libraries
   }
 
-  /** 依据库的存放位置把 JSON 写到对应文件（内部相对路径或外部绝对路径） */
+  /** 依据库的存放位置把 JSON 写到对应文件夹（内部相对路径或外部绝对路径） */
   async saveLibrary(lib: Library): Promise<void> {
-    const data = JSON.stringify(lib, null, 2)
     if (isExternalLibrary(lib)) {
-      await this.adapter.writeAbs!(externalLibraryPath(lib), data)
+      await this.adapter.writeAbs!(externalLibraryPath(lib), JSON.stringify(lib, null, 2))
       await this.registerExternalLibrary(lib)
     } else {
       await this.saveNow(libraryFile(lib.id), lib)
     }
   }
 
-  /** 删除库文件（外部库同时清理索引；内部库移除 JSON 文件） */
+  /** 删除库（整个库文件夹，含存档的源文件） */
   async removeLibrary(lib: Library): Promise<void> {
     if (isExternalLibrary(lib)) {
-      await this.adapter.removeAbs!(externalLibraryPath(lib))
+      await this.adapter.removeDir?.(externalLibraryDir(lib))
       await this.registerExternalLibrary({ ...lib, storagePath: null, fileName: null })
     } else {
-      await this.remove(libraryFile(lib.id))
+      await this.adapter.removeTree?.(libraryDir(lib.id))
     }
   }
 
   /**
-   * 把库文件从旧位置搬到新位置（返回新库对象；失败时抛错且不破坏旧文件）。
+   * 把库文件夹整体搬到新位置（返回新库对象；失败时抛错且不破坏旧文件夹）。
    * newDir 为 null 表示搬回数据文件夹内部。
    */
-  async moveLibrary(lib: Library, newDir: string | null, newFileName: string): Promise<Library> {
-    const data = JSON.stringify(lib, null, 2)
+  async moveLibrary(lib: Library, newDir: string | null, newFolderName: string): Promise<Library> {
     if (isExternalLibrary(lib)) {
-      const oldPath = externalLibraryPath(lib)
+      const oldDir = externalLibraryDir(lib)
       if (newDir) {
-        const newPath = `${newDir}/${newFileName}`
-        await this.adapter.writeAbs!(newPath, data)
-        await this.adapter.removeAbs!(oldPath)
+        const newLoc = `${newDir}/${newFolderName}`
+        await this.adapter.copyDir!(oldDir, newLoc)
+        await this.adapter.removeDir!(oldDir)
       } else {
-        await this.saveNow(libraryFile(lib.id), lib)
-        await this.adapter.removeAbs!(oldPath)
+        const destAbs = await this.adapter.absOf!(libraryDir(lib.id))
+        await this.adapter.ensureDirAbs!(destAbs)
+        await this.adapter.copyDir!(oldDir, destAbs)
+        await this.adapter.removeDir!(oldDir)
       }
     } else if (newDir) {
-      await this.adapter.writeAbs!(`${newDir}/${newFileName}`, data)
-      await this.remove(libraryFile(lib.id))
+      const srcAbs = await this.adapter.absOf!(libraryDir(lib.id))
+      const newLoc = `${newDir}/${newFolderName}`
+      await this.adapter.ensureDirAbs!(newLoc)
+      await this.adapter.copyDir!(srcAbs, newLoc)
+      await this.adapter.removeTree!(libraryDir(lib.id))
     }
     const moved: Library = {
       ...lib,
       storagePath: newDir,
-      fileName: newDir ? newFileName : null,
+      fileName: newDir ? newFolderName : null,
     }
     await this.registerExternalLibrary(moved)
+    await this.saveLibrary(moved)
     return moved
+  }
+
+  /* ---------- 库内附件文件（files/） ---------- */
+
+  /** 库文件夹里 files/ 的目标位置：内部返回相对路径，外部返回绝对路径 */
+  attachmentTarget(lib: Library, storedAs: string): { rel?: string; abs?: string } {
+    if (isExternalLibrary(lib)) return { abs: `${externalLibraryDir(lib)}/files/${storedAs}` }
+    return { rel: `${libraryDir(lib.id)}/files/${storedAs}` }
+  }
+
+  /** 确保库的 files/ 目录存在（外部库用） */
+  async ensureAttachmentDir(lib: Library): Promise<void> {
+    if (!isExternalLibrary(lib)) return
+    await this.adapter.ensureDirAbs?.(`${externalLibraryDir(lib)}/files`)
+  }
+
+  /**
+   * 把外部文件复制进库文件夹（桌面端）。返回是否成功。
+   */
+  async copyFileIntoLibrary(lib: Library, srcAbs: string, storedAs: string): Promise<boolean> {
+    const t = this.attachmentTarget(lib, storedAs)
+    try {
+      if (t.rel) {
+        await this.adapter.copyFileIn?.(srcAbs, t.rel)
+        return true
+      }
+      if (t.abs) {
+        await this.adapter.ensureDirAbs?.(`${externalLibraryDir(lib)}/files`)
+        const fsmod = await import('@tauri-apps/plugin-fs')
+        await fsmod.copyFile(srcAbs, t.abs)
+        return true
+      }
+    } catch {
+      /* 复制失败按不支持处理 */
+    }
+    return false
+  }
+
+  /**
+   * 把内存中的字节写入库文件夹（安卓导入）。返回是否成功。
+   */
+  async writeLibraryBinary(lib: Library, storedAs: string, bytes: Uint8Array): Promise<boolean> {
+    const t = this.attachmentTarget(lib, storedAs)
+    if (t.rel) return (await this.adapter.writeBinary?.(t.rel, bytes)) ?? false
+    if (t.abs) {
+      try {
+        await this.adapter.ensureDirAbs?.(`${externalLibraryDir(lib)}/files`)
+        const fsmod = await import('@tauri-apps/plugin-fs')
+        await fsmod.writeFile(t.abs, bytes)
+        return true
+      } catch {
+        return false
+      }
+    }
+    return false
   }
 
   /* ---------- 数据根目录（OOBE / 设置页） ---------- */
@@ -204,20 +325,25 @@ export class Repo {
   }
 
   /**
-   * 把当前数据根里的所有数据（设置、模板、内部库、索引）复制到 newDir，
+   * 把当前数据根里的所有数据（设置、模板、内部库文件夹、索引）整体复制到 newDir，
    * 然后切换数据根。外部库不在此列（本就独立存放）。
    */
   async copyDataTo(newDir: string): Promise<void> {
-    const files: string[] = ['settings.json']
-    for (const dir of ['templates', 'libraries']) {
-      for (const name of await this.adapter.listFiles(dir)) {
-        files.push(`${dir}/${name}`)
+    if (this.adapter.copyDir && this.adapter.absOf) {
+      const src = await this.adapter.absOf('')
+      await this.adapter.ensureDirAbs?.(newDir)
+      await this.adapter.copyDir(src, newDir)
+    } else {
+      // 非 Tauri 环境兜底：逐文件复制文本（不含二进制附件）
+      const files: string[] = ['settings.json']
+      for (const dir of ['templates', 'libraries']) {
+        for (const rel of await this.adapter.listTree?.(dir) ?? []) files.push(`${dir}/${rel}`)
       }
-    }
-    for (const rel of files) {
-      const raw = await this.adapter.readText(rel)
-      if (raw === null) continue
-      await this.adapter.writeAbs!(`${newDir}/${rel}`, raw)
+      for (const rel of files) {
+        const raw = await this.adapter.readText(rel)
+        if (raw === null) continue
+        await this.adapter.writeAbs!(`${newDir}/${rel}`, raw)
+      }
     }
     await this.setDataRoot(newDir)
   }

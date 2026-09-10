@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import type { FieldDef, FieldKind, ExtractStrategy, Template } from '../core/models'
+import { plainClone } from '../core/models'
 import { parseText } from '../core/parsers'
 import { extractFromDocument } from '../core/extract'
 import { useTemplatesStore } from '../stores/templates'
@@ -8,13 +9,14 @@ import { useUiStore } from '../stores/ui'
 import { t } from '../locales/strings'
 import AppIcon from '../components/AppIcon.vue'
 import AppModal from '../components/AppModal.vue'
+import AppSelect from '../components/AppSelect.vue'
 import EmptyState from '../components/EmptyState.vue'
 
 const store = useTemplatesStore()
 const ui = useUiStore()
 
 const selectedId = ref<string>(store.all[0]?.id ?? '')
-const draft = reactive<Template>(structuredClone(store.all[0] ?? { id: '', name: '', description: '', builtin: true, fields: [] }))
+const draft = reactive<Template>(plainClone(store.all[0] ?? { id: '', name: '', description: '', builtin: true, fields: [] }))
 const sampleText = ref('')
 const sampleResult = ref<{ name: string; value: string; conf: number }[] | null>(null)
 
@@ -22,7 +24,7 @@ watch(
   selectedId,
   () => {
     const tpl = store.byId(selectedId.value)
-    if (tpl) Object.assign(draft, structuredClone(tpl))
+    if (tpl) Object.assign(draft, plainClone(tpl))
     sampleResult.value = null
   },
   { immediate: true },
@@ -70,7 +72,7 @@ async function save() {
   } else {
     await store.create(cleaned)
   }
-  Object.assign(draft, structuredClone(cleaned))
+  Object.assign(draft, plainClone(cleaned))
   ui.toast(t.toast.templateSaved)
 }
 
@@ -95,7 +97,7 @@ function removeTemplate() {
 function runTest() {
   if (sampleText.value.trim() === '') return
   const doc = { fileName: '样例文本', kind: 'text' as const, blocks: parseText(sampleText.value) }
-  const tpl: Template = { ...structuredClone(draft), fields: draft.fields.filter((f) => f.name.trim() !== '') }
+  const tpl: Template = { ...plainClone(draft), fields: draft.fields.filter((f) => f.name.trim() !== '') }
   const { entries } = extractFromDocument(doc.blocks, tpl, doc.fileName)
   const entry = entries[0]
   sampleResult.value = (entry ? tpl.fields : []).map((f: FieldDef) => ({
@@ -118,16 +120,8 @@ async function newTemplate() {
   selectedId.value = tpl.id
 }
 
-const kinds: FieldKind[] = ['text', 'date', 'number', 'tag']
-const strategies: ExtractStrategy[] = ['auto', 'keyword', 'regex', 'heading', 'tableMap']
-
-function kindName(k: FieldKind): string {
-  return t.templates.kinds[k]
-}
-
-function strategyName(s: ExtractStrategy): string {
-  return t.templates.strategies[s]
-}
+const kindOptions = (['text', 'date', 'number', 'tag'] as FieldKind[]).map((k) => ({ value: k, label: t.templates.kinds[k] }))
+const strategyOptions = (['auto', 'keyword', 'regex', 'heading', 'tableMap'] as ExtractStrategy[]).map((s) => ({ value: s, label: t.templates.strategies[s] }))
 </script>
 
 <template>
@@ -179,12 +173,8 @@ function strategyName(s: ExtractStrategy): string {
           <div v-if="draft.fields.length === 0" class="hint">{{ t.templates.noFields }}</div>
           <div v-for="(field, i) in draft.fields" :key="field.id" class="field-row">
             <input v-model="field.name" class="input name-input" type="text" :placeholder="t.templates.fieldName" :disabled="isBuiltin" />
-            <select v-model="field.kind" class="select" :disabled="isBuiltin">
-              <option v-for="k in kinds" :key="k" :value="k">{{ kindName(k) }}</option>
-            </select>
-            <select v-model="field.strategy" class="select" :disabled="isBuiltin">
-              <option v-for="s in strategies" :key="s" :value="s">{{ strategyName(s) }}</option>
-            </select>
+            <AppSelect v-model="field.kind" :disabled="isBuiltin" :options="kindOptions" />
+            <AppSelect v-model="field.strategy" :disabled="isBuiltin" :options="strategyOptions" />
             <input
               v-if="field.strategy === 'regex'"
               v-model="field.pattern"
@@ -216,18 +206,10 @@ function strategyName(s: ExtractStrategy): string {
           <div class="editor-foot">
             <template v-if="isBuiltin">
               <span class="hint foot-hint">{{ t.templates.builtinNote }}</span>
-              <button class="btn" @click="duplicateCurrent">
-                <AppIcon name="copy" :size="15" />
-                {{ t.common.duplicate }}
-              </button>
             </template>
             <template v-else>
               <span class="hint foot-hint">{{ t.templates.userOpsHint }}</span>
               <span class="foot-ops">
-                <button class="btn btn" @click="duplicateCurrent">
-                  <AppIcon name="copy" :size="15" />
-                  {{ t.common.duplicate }}
-                </button>
                 <button class="btn btn-danger" @click="showDeleteConfirm = true">
                   <AppIcon name="trash" :size="15" />
                   {{ t.common.delete }}
@@ -378,9 +360,9 @@ function strategyName(s: ExtractStrategy): string {
   flex: 0 1 140px;
 }
 
-.field-row .select {
+.field-row .sel {
   flex: 0 0 auto;
-  width: 96px;
+  width: 110px;
 }
 
 .extra-input {

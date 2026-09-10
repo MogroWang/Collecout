@@ -327,12 +327,7 @@ async function pickNewLocation() {
       icon="doc"
       :title="t.library.emptyTitle"
       :desc="t.library.emptyDesc"
-    >
-      <button class="btn btn-primary" @click="router.push(`/import?lib=${library.id}`)">
-        <AppIcon name="import" :size="15" />
-        {{ t.library.importHere }}
-      </button>
-    </EmptyState>
+    />
 
     <template v-else>
       <div class="toolbar">

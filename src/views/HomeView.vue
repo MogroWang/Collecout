@@ -9,6 +9,7 @@ import { t } from '../locales/strings'
 import { isDesktop } from '../lib/platform'
 import AppIcon from '../components/AppIcon.vue'
 import AppModal from '../components/AppModal.vue'
+import AppSelect from '../components/AppSelect.vue'
 import EmptyState from '../components/EmptyState.vue'
 
 const router = useRouter()
@@ -96,13 +97,7 @@ async function createLibrary() {
       icon="library"
       :title="t.home.emptyTitle"
       :desc="t.home.emptyDesc"
-    >
-      <button class="btn btn-primary" @click="router.push('/import')">
-        <AppIcon name="import" :size="15" />
-        {{ t.home.import }}
-      </button>
-      <button class="btn" @click="openNewDialog">{{ t.home.emptyNew }}</button>
-    </EmptyState>
+    />
 
     <div v-else class="lib-grid">
       <article
@@ -135,9 +130,11 @@ async function createLibrary() {
         </div>
         <div class="form-row">
           <label>{{ t.home.newLibTemplate }}</label>
-          <select v-model="newTemplateId" class="select">
-            <option v-for="tpl in templates.all" :key="tpl.id" :value="tpl.id">{{ tpl.name }}</option>
-          </select>
+          <AppSelect
+            v-model="newTemplateId"
+            grow
+            :options="templates.all.map((tpl) => ({ value: tpl.id, label: tpl.name }))"
+          />
           <p class="hint">{{ templates.byId(newTemplateId)?.description }}</p>
         </div>
         <div v-if="isDesktop()" class="form-row">

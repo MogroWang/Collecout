@@ -16,7 +16,7 @@ const sourceFields: FieldDef[] = [
 ]
 
 async function readPersisted(id: string): Promise<Library | null> {
-  return repo().readJSON<Library | null>(`libraries/${id}.json`, null)
+  return repo().readJSON<Library | null>(`libraries/${id}/library.json`, null)
 }
 
 beforeEach(async () => {
@@ -111,6 +111,27 @@ describe('libraries store 字段快照与重映射', () => {
     expect(lib.fields.map((f) => f.name)).toEqual(['列1', '列2'])
     // 字段 id 与条目值的键一致 → 视图层能渲染出内容
     expect(lib.entries[0].values[lib.fields[0].id]).toBe('2026-08-01')
+  })
+
+  it('0.3.0 单文件库加载时自动迁移为文件夹结构', async () => {
+    const legacy = {
+      id: 'old-1',
+      name: '旧结构库',
+      templateId: 'tpl_auto',
+      fields: [],
+      sources: [],
+      entries: [],
+      createdAt: '2026-09-01T00:00:00.000Z',
+      updatedAt: '2026-09-01T00:00:00.000Z',
+    }
+    await repo().saveNow('libraries/old-1.json', legacy)
+
+    const store = useLibrariesStore()
+    await store.load()
+    expect(store.byId('old-1')?.name).toBe('旧结构库')
+    // 旧单文件已被搬进 library.json
+    expect(await repo().adapter.exists('libraries/old-1.json')).toBe(false)
+    expect(await repo().adapter.exists('libraries/old-1/library.json')).toBe(true)
   })
 
   it('带字段的旧库（如显式模板导入）直接沿用模板字段', async () => {

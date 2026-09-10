@@ -1,7 +1,7 @@
 {
   "name": "collecout",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.4.0",
   "type": "module",
   "description": "萃序 Collecout —— 把 Word、Excel 和纯文本萃成结构化的信息库",
   "scripts": {
@@ -11,7 +11,7 @@
     "typecheck": "vue-tsc --noEmit",
     "test": "vitest run",
     "tauri": "tauri",
-    "gen:icon": "node scripts/gen-icon.mjs && tauri icon app-icon.png -o src-tauri/icons",
+    "gen:icon": "node scripts/gen-icon.mjs",
     "samples": "node scripts/make-samples.mjs",
     "cap:add": "npm run build && cap add android",
     "cap:sync": "npm run build && cap sync android"

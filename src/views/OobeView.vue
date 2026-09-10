@@ -17,6 +17,7 @@ const templates = useTemplatesStore()
 const mode = ref<'default' | 'custom'>('default')
 const defaultPath = ref('')
 const customPath = ref('')
+const picking = ref(false)
 const starting = ref(false)
 const error = ref('')
 
@@ -24,23 +25,51 @@ onMounted(async () => {
   defaultPath.value = await repo().describeDefaultRoot()
 })
 
+/** 自定义位置校验通过后才允许开始 */
+const customReady = computed(() => customPath.value !== '' && error.value === '')
+
 const canStart = computed(() => {
-  if (starting.value) return false
+  if (starting.value || picking.value) return false
   if (mode.value === 'default') return true
-  return customPath.value !== '' && error.value === ''
+  return customReady.value
 })
 
-async function chooseFolder() {
+function pickCustom() {
+  if (picking.value) return
   error.value = ''
-  const dir = await pickDirectory()
-  if (!dir) return
-  if (!(await repo().canWriteAbs(dir))) {
-    error.value = t.oobe.notWritable
-    customPath.value = ''
-    return
+  void (async () => {
+    picking.value = true
+    try {
+      const dir = await pickDirectory()
+      if (!dir) return
+      // 自定义数据位置要求空文件夹：避免与既有内容混放
+      const entries = await repo().adapter.listDirAbs?.(dir)
+      if (entries && entries.length > 0) {
+        error.value = t.oobe.notEmpty
+        customPath.value = ''
+        return
+      }
+      if (!(await repo().canWriteAbs(dir))) {
+        error.value = t.oobe.notWritable
+        customPath.value = ''
+        return
+      }
+      customPath.value = dir
+      mode.value = 'custom'
+    } finally {
+      picking.value = false
+    }
+  })()
+}
+
+function chooseMode(next: 'default' | 'custom') {
+  if (starting.value) return
+  if (mode.value === next) return
+  mode.value = next
+  if (next === 'custom' && customPath.value === '') {
+    // 首次切换到自定义：提示需要空文件夹，用户点击卡片内的按钮确认后弹出选择窗口
+    error.value = ''
   }
-  customPath.value = dir
-  mode.value = 'custom'
 }
 
 async function start() {
@@ -69,11 +98,10 @@ async function start() {
       <h2 class="loc-title">{{ t.oobe.locationTitle }}</h2>
       <p class="hint loc-desc">{{ t.oobe.locationDesc }}</p>
 
-      <button class="loc-card card clickable" :class="{ on: mode === 'default' }" type="button" @click="mode = 'default'">
+      <button class="loc-card card clickable" :class="{ on: mode === 'default' }" type="button" @click="chooseMode('default')">
         <span class="loc-head">
           <AppIcon name="folder" :size="16" />
           <strong>{{ t.oobe.defaultOption }}</strong>
-          <span v-if="mode === 'default'" class="chip">{{ t.common.confirm }}</span>
         </span>
         <span class="hint">{{ t.oobe.defaultOptionDesc }}</span>
         <span class="loc-path meta">{{ defaultPath }}</span>
@@ -83,23 +111,25 @@ async function start() {
         class="loc-card card clickable"
         :class="{ on: mode === 'custom' }"
         type="button"
-        @click="mode === 'custom' ? chooseFolder() : (mode = 'custom')"
+        @click="mode === 'custom' ? pickCustom() : chooseMode('custom')"
       >
         <span class="loc-head">
           <AppIcon name="library" :size="16" />
           <strong>{{ t.oobe.customOption }}</strong>
-          <span v-if="mode === 'custom' && customPath" class="chip">{{ t.common.confirm }}</span>
+          <span v-if="customReady" class="chip loc-chip">{{ t.oobe.customPicked }}</span>
         </span>
-        <span class="hint">{{ customPath || '点击选择一个文件夹' }}</span>
+        <span v-if="customPath" class="loc-path meta">{{ customPath }}</span>
+        <span v-else class="hint">{{ t.oobe.customHint }}</span>
+        <!-- 已切到自定义且还没选路径：点卡片本身即视为确认，直接弹出选择窗口 -->
+        <span v-if="mode === 'custom' && !customPath && !picking" class="pick-inline meta">
+          <AppIcon name="folder" :size="14" />
+          {{ t.oobe.pickFolder }}
+        </span>
       </button>
 
       <p v-if="error" class="error meta">{{ error }}</p>
 
       <div class="oobe-foot">
-        <button class="btn" :disabled="mode !== 'custom'" @click="chooseFolder">
-          <AppIcon name="folder" :size="15" />
-          {{ t.oobe.pickFolder }}
-        </button>
         <button class="btn btn-primary" :disabled="!canStart" @click="start">
           <AppIcon name="check" :size="15" />
           {{ starting ? t.oobe.starting : t.oobe.start }}
@@ -178,7 +208,7 @@ async function start() {
   width: 100%;
 }
 
-.loc-head .chip {
+.loc-chip {
   margin-left: auto;
 }
 
@@ -186,6 +216,15 @@ async function start() {
   font-family: ui-monospace, 'SF Mono', Menlo, monospace;
   font-size: 11.5px;
   word-break: break-all;
+}
+
+.pick-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  color: var(--accent);
+  font-weight: 600;
 }
 
 .error {

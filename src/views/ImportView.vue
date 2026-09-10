@@ -1,18 +1,20 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ACCEPTED_EXTENSIONS } from '../core/parsers'
 import type { TableLayout } from '../core/extract'
 import type { FieldDef } from '../core/models'
-import { useImporterStore, type ImportFileState } from '../stores/importer'
+import type { SourceKind } from '../core/parsers/types'
+import { useImporterStore, type ImportFileRef, type ImportFileState } from '../stores/importer'
 import { useLibrariesStore, type AppendPlan, type ConflictDecision } from '../stores/libraries'
 import { useTemplatesStore } from '../stores/templates'
 import { useUiStore } from '../stores/ui'
 import { repo } from '../core/storage/repo'
 import { t } from '../locales/strings'
 import { isDesktop } from '../lib/platform'
+import { extendFsScope } from '../lib/desktop'
 import AppIcon from '../components/AppIcon.vue'
 import AppModal from '../components/AppModal.vue'
+import AppSelect from '../components/AppSelect.vue'
 import ConfidenceBadge from '../components/ConfidenceBadge.vue'
 
 const route = useRoute()
@@ -26,6 +28,8 @@ const dragging = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
 const activeFileId = ref('')
 const busy = ref(false)
+/** 源文件存档方式：copy 复制进库（默认）/ link 记录原位置（仅桌面端） */
+const fileMode = ref<'copy' | 'link'>('copy')
 
 onMounted(() => {
   const libId = route.query.lib
@@ -46,7 +50,8 @@ const canNext = computed(() => {
     case 3:
       return importer.templateId !== null
     case 4:
-      return importer.allDrafts.length > 0
+      // 纯附件批次（无法提取文本）也允许进入入库步骤
+      return importer.files.some((f) => f.doc) && (importer.allDrafts.length > 0 || importer.files.every((f) => f.doc!.kind === 'file'))
     case 5:
       if (importer.targetMode === 'new') {
         return (importer.newLibName.trim() !== '' || importer.files.length > 0) && newLocationReady.value
@@ -64,24 +69,72 @@ const lowCount = computed(() => {
   return f.drafts.reduce((n, d) => n + Object.values(d.confidence).filter((c) => c < 0.6).length, 0)
 })
 
-function kindLabel(kind: 'docx' | 'xlsx' | 'text'): string {
-  return kind === 'docx' ? t.import.kindDocx : kind === 'xlsx' ? t.import.kindXlsx : t.import.kindText
+function kindLabel(kind: SourceKind): string {
+  return kind === 'docx' ? t.import.kindDocx : kind === 'xlsx' ? t.import.kindXlsx : kind === 'text' ? t.import.kindText : t.import.kindFile
+}
+
+function kindIcon(kind: SourceKind): 'sheet' | 'doc' | 'text' {
+  return kind === 'xlsx' ? 'sheet' : kind === 'text' ? 'text' : 'doc'
+}
+
+/** 把桌面端对话框返回的路径登记进 fs scope 再交给导入器 */
+async function importPaths(paths: string[]) {
+  for (const p of paths) await extendFsScope(p, false)
+  await onFilesChosen(paths.map((p) => ({ name: p.split(/[\\/]/).pop() ?? p, path: p })))
 }
 
 function pickFiles() {
+  if (isDesktop()) {
+    void (async () => {
+      const { open } = await import('@tauri-apps/plugin-dialog')
+      const picked = await open({ multiple: true, title: t.import.chooseFiles })
+      if (!picked) return
+      await importPaths(Array.isArray(picked) ? picked : [picked])
+    })()
+    return
+  }
   fileInput.value?.click()
 }
 
-async function onFilesChosen(list: FileList | null) {
-  if (!list || list.length === 0) return
-  await importer.addFiles(Array.from(list))
+async function onFilesChosen(list: ImportFileRef[]) {
+  if (list.length === 0) return
+  await importer.addFiles(list)
   activeFileId.value = importer.files[0]?.id ?? ''
 }
 
 function onDrop(e: DragEvent) {
   dragging.value = false
-  void onFilesChosen(e.dataTransfer?.files ?? null)
+  const files = e.dataTransfer?.files
+  if (!files || files.length === 0) return
+  void onFilesChosen(Array.from(files, (f) => ({ name: f.name, file: f })))
 }
+
+/* 桌面端的拖放由 Tauri 接管（WebView 的 HTML drop 不触发），走窗口拖放事件拿路径 */
+let unlistenDrag: (() => void) | null = null
+let dragHover = 0
+
+onMounted(async () => {
+  if (!isDesktop()) return
+  try {
+    const { getCurrentWindow } = await import('@tauri-apps/api/window')
+    unlistenDrag = await getCurrentWindow().onDragDropEvent((ev) => {
+      if (ev.payload.type === 'enter') {
+        dragHover++
+        dragging.value = true
+      } else if (ev.payload.type === 'leave') {
+        dragHover = Math.max(0, dragHover - 1)
+        if (dragHover === 0) dragging.value = false
+      } else if (ev.payload.type === 'drop') {
+        dragHover = 0
+        dragging.value = false
+        if (ev.payload.paths.length > 0) void importPaths(ev.payload.paths)
+      }
+    })
+  } catch {
+    /* 拿不到窗口句柄时拖放不可用，按钮选择不受影响 */
+  }
+})
+onBeforeUnmount(() => unlistenDrag?.())
 
 function next() {
   if (step.value === 3) {
@@ -238,7 +291,7 @@ async function finish() {
   busy.value = true
   try {
     const storageDir = importer.targetMode === 'new' && newLocMode.value === 'custom' ? importer.newLibDir : null
-    const result = await importer.commit(decisions.value, storageDir)
+    const result = await importer.commit(decisions.value, storageDir, fileMode.value)
     if (result) {
       if (importer.targetMode === 'append' && (result.overwritten > 0 || result.skipped > 0)) {
         ui.toast(t.import.importedDetail(result.added, result.overwritten, result.skipped, libraries.byId(result.libraryId)?.name ?? ''))
@@ -286,15 +339,16 @@ async function finish() {
         <AppIcon name="import" :size="28" />
         <h2>{{ t.import.dropTitle }}</h2>
         <p class="meta">{{ t.import.dropDesc }}</p>
-        <input ref="fileInput" type="file" multiple :accept="ACCEPTED_EXTENSIONS" hidden @change="onFilesChosen(($event.target as HTMLInputElement)?.files ?? null)" />
+        <input ref="fileInput" type="file" multiple hidden @change="onFilesChosen(Array.from(($event.target as HTMLInputElement)?.files ?? []).map((f) => ({ name: f.name, file: f })))" />
       </div>
 
       <ul v-if="importer.files.length > 0" class="file-list">
         <li v-for="f in importer.files" :key="f.id" class="card file-item">
-          <AppIcon :name="f.doc?.kind === 'xlsx' ? 'sheet' : f.doc?.kind === 'docx' ? 'doc' : 'text'" :size="17" />
+          <AppIcon :name="f.doc ? kindIcon(f.doc.kind) : 'doc'" :size="17" />
           <div class="file-info">
-            <span class="file-name">{{ f.file.name }}</span>
+            <span class="file-name">{{ f.name }}</span>
             <span v-if="f.error" class="meta error">{{ f.error }}</span>
+            <span v-else-if="f.doc?.kind === 'file'" class="meta">{{ t.import.kindFile }} · {{ t.import.fileAttachNote }}</span>
             <span v-else-if="f.doc" class="meta">{{ kindLabel(f.doc.kind) }} · {{ f.doc.blocks.length }} 个内容块</span>
             <span v-else class="meta">解析中…</span>
           </div>
@@ -309,11 +363,12 @@ async function finish() {
     <section v-else-if="step === 2" class="step-body">
       <div v-for="f in importer.files" :key="f.id" class="card rec-card">
         <div class="rec-head">
-          <AppIcon :name="f.doc?.kind === 'xlsx' ? 'sheet' : f.doc?.kind === 'docx' ? 'doc' : 'text'" :size="18" />
-          <strong>{{ f.file.name }}</strong>
+          <AppIcon :name="f.doc ? kindIcon(f.doc.kind) : 'doc'" :size="18" />
+          <strong>{{ f.name }}</strong>
           <span v-if="f.doc" class="chip">{{ kindLabel(f.doc.kind) }}</span>
         </div>
         <p v-if="f.error" class="meta error">{{ f.error }}</p>
+        <p v-else-if="f.doc?.kind === 'file'" class="meta">{{ t.import.fileAttachNote }}</p>
         <p v-else-if="f.doc" class="meta">
           识别出 {{ f.doc.blocks.length }} 个内容块
           · 标题 {{ f.doc.blocks.filter((b) => b.type === 'heading').length }}
@@ -356,42 +411,41 @@ async function finish() {
           :class="{ on: activeFile?.id === f.id }"
           @click="activeFileId = f.id"
         >
-          {{ f.file.name }}
+          {{ f.name }}
         </button>
       </div>
 
       <template v-if="activeFile">
         <div class="card mode-card">
           <p class="mode-line">
-            <AppIcon :name="activeFile.mode === 'table' ? 'table' : 'doc'" :size="15" />
-            <strong>{{ activeFile.file.name }}</strong>
-            {{ activeFile.mode === 'table' ? t.import.tableMode : activeFile.drafts.length > 1 ? t.import.logMode : t.import.documentMode }}
+            <AppIcon :name="activeFile.doc?.kind === 'file' ? 'doc' : activeFile.mode === 'table' ? 'table' : 'doc'" :size="15" />
+            <strong>{{ activeFile.name }}</strong>
+            <template v-if="activeFile.doc?.kind === 'file'">{{ t.import.fileAttachNote }}</template>
+            <template v-else>
+              {{ activeFile.mode === 'table' ? t.import.tableMode : activeFile.drafts.length > 1 ? t.import.logMode : t.import.documentMode }}
+            </template>
           </p>
 
           <div v-if="activeFile.mode === 'table'" class="tuning">
             <label v-if="activeFile.tables.length > 1" class="tune-row">
               <span>{{ t.import.sheet }}</span>
-              <select
-                :value="activeFile.activeTable"
-                class="select"
-                @change="importer.setActiveSheet(activeFile.id, Number(($event.target as HTMLSelectElement).value))"
-              >
-                <option v-for="(tb, ti) in activeFile.tables" :key="ti" :value="ti">
-                  {{ tb.label || `表格${ti + 1}` }}（{{ tb.rows.length }} 行）
-                </option>
-              </select>
+              <AppSelect
+                :model-value="activeFile.activeTable"
+                :options="activeFile.tables.map((tb, ti) => ({ value: ti, label: `${tb.label || `表格${ti + 1}`}（${tb.rows.length} 行）` }))"
+                @update:model-value="importer.setActiveSheet(activeFile.id, Number($event))"
+              />
             </label>
             <label class="tune-row">
               <span>{{ t.import.layout }}</span>
-              <select
-                :value="activeFile.layout"
-                class="select"
-                @change="importer.setLayout(activeFile.id, ($event.target as HTMLSelectElement).value as TableLayout)"
-              >
-                <option value="auto">{{ t.import.layoutAuto }}</option>
-                <option value="headerTop">{{ t.import.layoutTop }}</option>
-                <option value="headerLeft">{{ t.import.layoutLeft }}</option>
-              </select>
+              <AppSelect
+                :model-value="activeFile.layout"
+                :options="[
+                  { value: 'auto', label: t.import.layoutAuto },
+                  { value: 'headerTop', label: t.import.layoutTop },
+                  { value: 'headerLeft', label: t.import.layoutLeft },
+                ]"
+                @update:model-value="importer.setLayout(activeFile.id, $event as TableLayout)"
+              />
               <span v-if="activeFile.resolvedLayout === 'headerLeft'" class="chip">{{ t.import.layoutResolvedLeft }}</span>
               <span v-else-if="activeFile.resolvedLayout === 'headerTop'" class="chip">{{ t.import.layoutResolvedTop }}</span>
             </label>
@@ -401,16 +455,17 @@ async function finish() {
             <div v-for="field in activeFile.inferred?.fields ?? []" :key="field.id" class="map-row">
               <span class="map-field">{{ field.name }}</span>
               <AppIcon name="chevron-right" :size="13" class="map-arrow" />
-              <select v-model="activeFile.mapping[field.id]" class="select">
-                <option :value="-1">（不导入）</option>
-                <option v-for="(col, ci) in activeFile.tableHeader" :key="ci" :value="ci">{{ col || `列${ci + 1}` }}</option>
-              </select>
+              <AppSelect
+                v-model="activeFile.mapping[field.id]"
+                compact
+                :options="[{ value: -1, label: '（不导入）' }, ...activeFile.tableHeader.map((col, ci) => ({ value: ci, label: col || `列${ci + 1}` }))]"
+              />
             </div>
           </div>
-          <p v-else class="hint">{{ t.import.editCellHint }}</p>
+          <p v-else-if="activeFile.doc?.kind !== 'file'" class="hint">{{ t.import.editCellHint }}</p>
         </div>
 
-        <div class="extract-bar">
+        <div v-if="activeFile.doc?.kind !== 'file'" class="extract-bar">
           <button class="btn btn-primary" @click="reExtract">
             <AppIcon name="check" :size="15" />
             {{ activeFile.extracted ? t.import.reExtract : t.import.startExtract }}
@@ -470,10 +525,26 @@ async function finish() {
         <label class="radio target-row">
           <input v-model="importer.targetMode" type="radio" value="append" />
           <span>{{ t.import.appendTo }}</span>
-          <select v-if="importer.targetMode === 'append'" v-model="importer.targetLibId" class="select">
-            <option v-for="lib in libraries.libraries" :key="lib.id" :value="lib.id">{{ lib.name }}（{{ lib.entries.length }} 条）</option>
-          </select>
+          <AppSelect
+            v-if="importer.targetMode === 'append'"
+            v-model="importer.targetLibId"
+            grow
+            :options="libraries.libraries.map((l) => ({ value: l.id, label: `${l.name}（${l.entries.length} 条）` }))"
+          />
         </label>
+
+        <!-- 源文件存档方式：默认复制一份进库文件夹，桌面端可选只记录原位置 -->
+        <div class="loc-block">
+          <span class="loc-label">{{ t.import.fileModeLabel }}</span>
+          <label class="loc-row">
+            <input v-model="fileMode" type="radio" value="copy" />
+            <span class="loc-name">{{ t.import.fileModeCopy }}</span>
+          </label>
+          <label v-if="isDesktop()" class="loc-row">
+            <input v-model="fileMode" type="radio" value="link" />
+            <span class="loc-name">{{ t.import.fileModeLink }}</span>
+          </label>
+        </div>
 
         <!-- 新建库：存放位置（桌面端） -->
         <div v-if="importer.targetMode === 'new' && isDesktop()" class="loc-block">
@@ -502,7 +573,7 @@ async function finish() {
         <p class="hint">{{ t.import.dupSummary(totalDuplicates, totalConflicts) }}</p>
 
         <div v-for="[fileId, p] in appendPlans" :key="fileId" class="compare-file">
-          <p class="meta compare-file-name">{{ p.file.file.name }}</p>
+          <p class="meta compare-file-name">{{ p.file.name }}</p>
 
           <div v-for="c in p.plan.conflicts" :key="c.index" class="conflict-row">
             <div class="conflict-main">

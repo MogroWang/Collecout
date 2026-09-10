@@ -32,16 +32,14 @@ function baseDirOf(fs: FsPlugin, base: BaseDir): (typeof fs.BaseDirectory)[keyof
 }
 
 /**
- * 默认数据根目录：
- * - Windows：exe 所在目录（绿色便携，数据跟着程序走）；
- * - macOS：家目录（exe 在 .app 包内，写入会破坏应用签名，不能采用）；
- * - Linux：先试 exe 目录（AppImage 等只读场景会失败），失败落回家目录；
+ * 默认数据根目录：跟随软件本目录（exe 所在文件夹，绿色便携，数据跟着程序走）。
+ * - macOS 的 exe 在 .app 包内，写入会破坏签名，探测失败后落回家目录；
+ * - Linux 的 AppImage 挂载点只读，同理落回；
  * - 都不可写时退回系统应用数据目录。
  */
 async function resolveDefaultRoot(fs: FsPlugin): Promise<BaseDir> {
   const os = osName()
-  const order: BaseDir[] =
-    os === 'windows' ? ['exe', 'appdata'] : os === 'macos' ? ['home', 'appdata'] : ['exe', 'home', 'appdata']
+  const order: BaseDir[] = os === 'windows' ? ['exe', 'appdata'] : ['exe', 'home', 'appdata']
   for (const base of order) {
     try {
       const bd = baseDirOf(fs, base)
@@ -222,6 +220,97 @@ export function createTauriAdapter(): StorageAdapter {
       }
     },
 
+    /* ---------- 库文件夹结构与跨位置能力 ---------- */
+
+    async listSubdirs(dir) {
+      const fs = await fsReady()
+      const { path: p, opts } = await targetOf(dir)
+      try {
+        const entries = await fs.readDir(p, opts as Parameters<typeof fs.readDir>[1])
+        return entries.filter((e) => e.isDirectory).map((e) => e.name)
+      } catch {
+        return []
+      }
+    },
+    async listTree(dir) {
+      const fs = await fsReady()
+      const { path: p, opts } = await targetOf(dir)
+      const out: string[] = []
+      const walk = async (rel: string) => {
+        let entries
+        try {
+          entries = await fs.readDir(rel === '' ? p : `${p}/${rel}`, opts as Parameters<typeof fs.readDir>[1])
+        } catch {
+          return
+        }
+        for (const e of entries) {
+          if (e.isDirectory) await walk(rel === '' ? e.name : `${rel}/${e.name}`)
+          else out.push(rel === '' ? e.name : `${rel}/${e.name}`)
+        }
+      }
+      await walk('')
+      return out
+    },
+    async removeTree(rel) {
+      const fs = await fsReady()
+      const { path: p, opts } = await targetOf(rel)
+      try {
+        await fs.remove(p, { recursive: true, ...opts } as Parameters<typeof fs.remove>[1])
+      } catch {
+        /* 目录不存在视为成功 */
+      }
+      ensuredDirs.clear()
+    },
+    async writeBinary(rel, bytes) {
+      const fs = await fsReady()
+      await ensureDir(rel)
+      const { path: p, opts } = await targetOf(rel)
+      await fs.writeFile(p, bytes, opts as Parameters<typeof fs.writeFile>[2])
+      return true
+    },
+    async absOf(rel) {
+      const { path } = await targetOf(rel)
+      return path
+    },
+    async copyDir(srcAbs, destAbs) {
+      const fs = await fsReady()
+      await fs.mkdir(destAbs, { recursive: true }).catch(() => undefined)
+      const entries = await fs.readDir(srcAbs)
+      for (const e of entries) {
+        const from = `${srcAbs}/${e.name}`
+        const to = `${destAbs}/${e.name}`
+        if (e.isDirectory) await this.copyDir!(from, to)
+        else await fs.copyFile(from, to)
+      }
+    },
+    async removeDir(abs) {
+      const fs = await fsReady()
+      try {
+        await fs.remove(abs, { recursive: true })
+      } catch {
+        /* 目录不存在视为成功 */
+      }
+    },
+    async ensureDirAbs(abs) {
+      const fs = await fsReady()
+      await fs.mkdir(abs, { recursive: true }).catch(() => undefined)
+    },
+    async listDirAbs(abs) {
+      const fs = await fsReady()
+      try {
+        const entries = await fs.readDir(abs)
+        return entries.map((e) => e.name)
+      } catch {
+        return []
+      }
+    },
+    async copyFileIn(srcAbs, destRel) {
+      const fs = await fsReady()
+      await ensureDir(destRel)
+      const { path: p } = await targetOf(destRel)
+      await fs.copyFile(srcAbs, p)
+    },
+
     /* ---------- 桌面端专属能力 ---------- */
 
     async readAbs(path) {
@@ -261,6 +350,9 @@ export function createTauriAdapter(): StorageAdapter {
     async needsOnboarding() {
       const fs = await fsReady()
       try {
+        // 已写过数据位置指针 → 完成过 OOBE（含自定义位置的用户）；
+        // 老版本没有指针，但默认数据文件夹里已有 libraries
+        if (await fs.exists(`${DATA_DIR}/${POINTER_FILE}`, { baseDir: baseDirOf(fs, defRoot!) })) return false
         return !(await fs.exists(`${DATA_DIR}/libraries`, { baseDir: baseDirOf(fs, defRoot!) }))
       } catch {
         return false

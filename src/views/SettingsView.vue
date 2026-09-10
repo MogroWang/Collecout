@@ -8,6 +8,7 @@ import { t } from '../locales/strings'
 import { isDesktop, platform } from '../lib/platform'
 import AppIcon from '../components/AppIcon.vue'
 import AppModal from '../components/AppModal.vue'
+import AppSelect from '../components/AppSelect.vue'
 
 const settings = useSettingsStore()
 const libraries = useLibrariesStore()
@@ -115,13 +116,11 @@ async function applyNewRoot(dir: string | null) {
       <h2 class="group-title">{{ t.settings.exportDefaults }}</h2>
       <div class="row">
         <span>{{ t.settings.defaultFormat }}</span>
-        <select
-          class="select"
-          :value="settings.settings.defaultExportFormat"
-          @change="settings.set({ defaultExportFormat: ($event.target as HTMLSelectElement).value as never })"
-        >
-          <option v-for="opt in formatOptions" :key="opt.id" :value="opt.id">{{ opt.label }}</option>
-        </select>
+        <AppSelect
+          :model-value="settings.settings.defaultExportFormat"
+          :options="formatOptions.map((o) => ({ value: o.id, label: o.label }))"
+          @update:model-value="settings.set({ defaultExportFormat: $event as never })"
+        />
       </div>
     </section>
 

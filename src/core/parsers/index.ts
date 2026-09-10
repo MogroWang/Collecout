@@ -10,19 +10,20 @@ const TEXT_EXT = /\.(txt|md|markdown)$/i
 const SHEET_EXT = /\.(xlsx|xlsm|csv)$/i
 const DOCX_EXT = /\.docx$/i
 
-export const ACCEPTED_EXTENSIONS = '.docx,.xlsx,.xlsm,.csv,.txt,.md,.markdown'
-
-/** 按扩展名分发解析器，返回统一的块结构文档 */
-export async function parseFile(file: File): Promise<ParsedDoc> {
-  const name = file.name
-  if (DOCX_EXT.test(name)) {
-    return parseDocx(await file.arrayBuffer(), name)
+/**
+ * 按扩展名分发解析器，返回统一的块结构文档。
+ * 其余任意扩展名不解析内容，作为「附件文件」随库存档。
+ */
+export async function parseFile(fileName: string, data: Uint8Array): Promise<ParsedDoc> {
+  if (DOCX_EXT.test(fileName)) {
+    return parseDocx(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer, fileName)
   }
-  if (SHEET_EXT.test(name)) {
-    return parseSheet(await file.arrayBuffer(), name)
+  if (SHEET_EXT.test(fileName)) {
+    return parseSheet(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer, fileName)
   }
-  if (TEXT_EXT.test(name)) {
-    return { fileName: name, kind: 'text', blocks: parseText(await file.text()) }
+  if (TEXT_EXT.test(fileName)) {
+    const text = new TextDecoder().decode(data)
+    return { fileName, kind: 'text', blocks: parseText(text) }
   }
-  throw new Error(`暂不支持「${name}」的格式，请使用 .docx、.xlsx、.csv、.txt 或 .md 文件`)
+  return { fileName, kind: 'file', blocks: [] }
 }

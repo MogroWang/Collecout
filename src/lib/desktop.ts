@@ -25,7 +25,7 @@ export async function pickSavePath(defaultName: string): Promise<string | null> 
 }
 
 /** 通过自定义 Rust 命令把路径登记进 tauri-plugin-fs 的运行时 scope */
-async function extendFsScope(path: string, isDir: boolean): Promise<void> {
+export async function extendFsScope(path: string, isDir: boolean): Promise<void> {
   try {
     await invoke('extend_fs_scope', { path, isDir })
   } catch {

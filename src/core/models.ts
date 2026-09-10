@@ -28,6 +28,20 @@ export interface SourceRef {
   locator: string
 }
 
+/** 导入时随库存档的源文件（复制副本或原位置引用） */
+export interface StoredFile {
+  id: string
+  /** 原始文件名 */
+  name: string
+  /** 库文件夹 files/ 内的存储名（重名自动加序号） */
+  storedAs: string
+  /** copy = 已复制进库文件夹；link = 保留在原位置，仅记录路径 */
+  mode: 'copy' | 'link'
+  /** mode = link 时的原始绝对路径 */
+  sourcePath?: string
+  importedAt: string
+}
+
 export interface Entry {
   id: string
   libraryId: string
@@ -40,11 +54,15 @@ export interface Entry {
 
 import type { SourceKind } from './parsers/types'
 
+export type { SourceKind }
+
 export interface SourceDoc {
   fileName: string
   kind: SourceKind
   importedAt: string
   entryCount: number
+  /** 本次导入存档的文件；0.3 及更早的来源没有此字段 */
+  files?: StoredFile[]
 }
 
 export interface Library {
@@ -57,9 +75,13 @@ export interface Library {
   entries: Entry[]
   createdAt: string
   updatedAt: string
-  /** 库文件独立存放的目录（绝对路径）；缺省 / null 表示存放在软件数据文件夹内 */
+  /**
+   * 库的存放：0.4.0 起每个库是一个文件夹（library.json + files/）。
+   * storagePath 为空 → 数据文件夹内 libraries/<id>/；
+   * 有值 → 独立存放在 <storagePath>/<folderName>/（桌面端）。
+   */
   storagePath?: string | null
-  /** 独立存放时的文件名（如「我的藏书.json」）；内部库固定为 libraries/<id>.json，无需此字段 */
+  /** 独立存放时的文件夹名；内部库固定为 libraries/<id>/，无需此字段 */
   fileName?: string | null
 }
 
@@ -81,6 +103,11 @@ export const DEFAULT_SETTINGS: Settings = {
 export function uuid(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID()
   return `id-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`
+}
+
+/** 深拷贝纯 JSON 数据（structuredClone 无法克隆 Vue 的 reactive proxy，模板等响应式数据一律用它） */
+export function plainClone<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T
 }
 
 export function newEntry(libraryId: string, sourceRef: SourceRef): Entry {

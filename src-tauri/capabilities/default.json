@@ -27,6 +27,7 @@
     "fs:allow-read-text-file",
     "fs:allow-write-file",
     "fs:allow-write-text-file",
+    "fs:allow-copy-file",
     "opener:default",
     "opener:allow-reveal-item-in-dir"
   ]

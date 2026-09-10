@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import type { Template } from '../core/models'
+import { plainClone } from '../core/models'
 import { BUILTIN_TEMPLATES } from '../core/extract'
 import { repo } from '../core/storage/repo'
 
@@ -33,7 +34,7 @@ export const useTemplatesStore = defineStore('templates', {
       const i = this.user.findIndex((x) => x.id === template.id)
       if (i === -1) return
       this.user[i] = { ...template, builtin: false }
-      repo().saveJSON(templateFile(template.id), this.user[i])
+      await repo().saveNow(templateFile(template.id), this.user[i])
     },
     async remove(id: string) {
       this.user = this.user.filter((x) => x.id !== id)
@@ -45,7 +46,7 @@ export const useTemplatesStore = defineStore('templates', {
       if (!source) return null
       const baseName = source.name.replace(/（副本\d*）$/, '')
       const copy: Template = {
-        ...structuredClone(source),
+        ...plainClone(source),
         id: crypto.randomUUID(),
         name: `${baseName}（副本）`,
         builtin: false,

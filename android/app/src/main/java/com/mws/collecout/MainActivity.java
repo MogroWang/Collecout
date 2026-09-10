@@ -1,4 +1,4 @@
-package com.mogrowang.collecout;
+package com.mws.collecout;
 
 import com.getcapacitor.BridgeActivity;
 

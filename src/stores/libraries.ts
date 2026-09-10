@@ -1,11 +1,11 @@
 import { defineStore } from 'pinia'
-import type { Entry, FieldDef, Library } from '../core/models'
+import type { Entry, FieldDef, Library, SourceKind, StoredFile } from '../core/models'
 import { newEntry, uuid } from '../core/models'
 import { BUILTIN_TEMPLATES, inferKindFromSamples, type DraftEntry } from '../core/extract'
-import { externalLibraryPath, isExternalLibrary, repo } from '../core/storage/repo'
+import { externalLibraryDir, isExternalLibrary, repo } from '../core/storage/repo'
 
 function libFile(id: string): string {
-  return `libraries/${id}.json`
+  return `libraries/${id}/library.json`
 }
 
 function persist(lib: Library) {
@@ -17,14 +17,40 @@ function normName(s: string): string {
   return s.trim().toLowerCase().replace(/\s+/g, '')
 }
 
-/** 生成外部库文件名：库名.json，与目录中已有文件重名时追加序号 */
-async function pickExternalFileName(dir: string, name: string): Promise<string> {
+/** 生成外部库文件夹名：用库名，与目录中已有条目重名时追加序号 */
+async function pickExternalFolderName(dir: string, name: string): Promise<string> {
   const base = (name.trim().replace(/[\\/:*?"<>|\n\r\t]/g, '-').trim() || '未命名库').slice(0, 60)
-  let candidate = `${base}.json`
+  let candidate = base
   for (let n = 2; await repo().adapter.existsAbs?.(`${dir}/${candidate}`); n++) {
-    candidate = `${base}（${n}）.json`
+    candidate = `${base}（${n}）`
   }
   return candidate
+}
+
+/** 库文件夹 files/ 内不重名的存储名 */
+async function pickStoredName(lib: Library, wanted: string): Promise<string> {
+  const r = repo()
+  const existing = new Set<string>()
+  try {
+    if (isExternalLibrary(lib)) {
+      const names = await r.adapter.listDirAbs?.(`${externalLibraryDir(lib)}/files`)
+      for (const n of names ?? []) existing.add(n)
+    } else if (r.adapter.listTree) {
+      for (const rel of await r.adapter.listTree(`libraries/${lib.id}/files`)) {
+        existing.add(rel.split('/').pop() ?? rel)
+      }
+    }
+  } catch {
+    /* 列不出来就按空集合处理 */
+  }
+  if (!existing.has(wanted)) return wanted
+  const dot = wanted.lastIndexOf('.')
+  const stem = dot > 0 ? wanted.slice(0, dot) : wanted
+  const ext = dot > 0 ? wanted.slice(dot) : ''
+  for (let n = 2; ; n++) {
+    const candidate = `${stem}（${n}）${ext}`
+    if (!existing.has(candidate)) return candidate
+  }
 }
 
 /**
@@ -161,7 +187,7 @@ export const useLibrariesStore = defineStore('libraries', {
         fileName: null,
       }
       if (storageDir) {
-        lib.fileName = await pickExternalFileName(storageDir, lib.name)
+        lib.fileName = await pickExternalFolderName(storageDir, lib.name)
         await repo().saveLibrary(lib)
       } else {
         lib.storagePath = null
@@ -176,7 +202,7 @@ export const useLibrariesStore = defineStore('libraries', {
       lib.name = name.trim() || lib.name
       persist(lib)
     },
-    /** 把库文件搬到另一个位置（null = 搬回数据文件夹内部），返回更新后的库 */
+    /** 把库文件夹搬到另一个位置（null = 搬回数据文件夹内部），返回更新后的库 */
     async moveLibrary(id: string, newDir: string | null): Promise<Library | null> {
       const lib = this.byId(id)
       if (!lib) return null
@@ -184,22 +210,69 @@ export const useLibrariesStore = defineStore('libraries', {
         (newDir === null && !isExternalLibrary(lib)) ||
         (newDir !== null && isExternalLibrary(lib) && lib.storagePath === newDir)
       if (samePlace) return lib
-      const fileName = isExternalLibrary(lib)
-        ? await pickExternalFileName(newDir ?? '', lib.fileName!)
-        : await pickExternalFileName(newDir ?? '', lib.name)
-      const moved = await repo().moveLibrary(lib, newDir, fileName)
+      const folderName = isExternalLibrary(lib)
+        ? await pickExternalFolderName(newDir ?? '', lib.fileName!)
+        : await pickExternalFolderName(newDir ?? '', lib.name)
+      const moved = await repo().moveLibrary(lib, newDir, folderName)
       Object.assign(lib, { storagePath: moved.storagePath, fileName: moved.fileName })
       return moved
+    },
+    /**
+     * 把本次导入的源文件存档进库（复制副本或记录原位置），并与同名来源合并。
+     * stored 里每个文件带 srcAbs（桌面端复制）或 bytes（安卓写入）。
+     */
+    async addSource(
+      id: string,
+      source: { fileName: string; kind: SourceKind },
+      stored: { name: string; srcAbs?: string; bytes?: Uint8Array }[],
+      fileMode: 'copy' | 'link',
+    ): Promise<StoredFile[]> {
+      const lib = this.byId(id)
+      if (!lib) return []
+      const now = new Date().toISOString()
+      const records: StoredFile[] = []
+      for (const f of stored) {
+        const storedAs = await pickStoredName(lib, f.name)
+        const rec: StoredFile = {
+          id: uuid(),
+          name: f.name,
+          storedAs,
+          mode: fileMode,
+          importedAt: now,
+        }
+        if (fileMode === 'link') {
+          rec.sourcePath = f.srcAbs
+        } else if (f.srcAbs !== undefined) {
+          const ok = await repo().copyFileIntoLibrary(lib, f.srcAbs, storedAs)
+          if (!ok) {
+            rec.mode = 'link'
+            rec.sourcePath = f.srcAbs
+          }
+        } else if (f.bytes !== undefined) {
+          const ok = await repo().writeLibraryBinary(lib, storedAs, f.bytes)
+          if (!ok) rec.mode = 'link'
+        }
+        records.push(rec)
+      }
+      await repo().ensureAttachmentDir(lib)
+      let doc = lib.sources.find((s) => s.fileName === source.fileName)
+      if (!doc) {
+        doc = { ...source, importedAt: now, entryCount: 0, files: [] }
+        lib.sources.push(doc)
+      }
+      doc.files = [...(doc.files ?? []), ...records]
+      persist(lib)
+      return records
     },
     async remove(id: string) {
       const lib = this.byId(id)
       this.libraries = this.libraries.filter((l) => l.id !== id)
       if (lib) await repo().removeLibrary(lib)
-      else await repo().remove(libFile(id))
+      else await repo().adapter.removeTree?.(`libraries/${id}`)
     },
     /** 外部库文件的绝对路径（设置页 / 库页展示用） */
     describeLocation(lib: Library): string {
-      return isExternalLibrary(lib) ? externalLibraryPath(lib) : '软件数据文件夹'
+      return isExternalLibrary(lib) ? externalLibraryDir(lib) : '软件数据文件夹'
     },
     /**
      * 追加入库前预检：把草稿值按字段名映射到库字段后，
@@ -272,7 +345,7 @@ export const useLibrariesStore = defineStore('libraries', {
     async addEntries(
       id: string,
       drafts: DraftEntry[],
-      source: { fileName: string; kind: 'docx' | 'xlsx' | 'text' },
+      source: { fileName: string; kind: SourceKind },
       sourceFields: FieldDef[] = [],
       options: AppendOptions = {},
     ): Promise<AppendResult> {

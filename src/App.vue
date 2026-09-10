@@ -57,8 +57,7 @@ async function closeWindow() {
     <!-- 自定义标题栏：替代系统原生标题栏，可拖动窗口 -->
     <div v-if="isDesktop()" class="titlebar" data-tauri-drag-region>
       <div class="tb-brand" data-tauri-drag-region>
-        <img src="/icon.svg" alt="" class="tb-mark" />
-        <span class="tb-name">{{ t.appName }} {{ t.appNameEn }}</span>
+        <img src="/logo-text.svg" alt="" class="tb-logo" />
       </div>
       <div class="tb-actions">
         <button class="tb-btn" :aria-label="t.titlebar.minimize" @click="minimize">
@@ -76,7 +75,11 @@ async function closeWindow() {
 
     <!-- OOBE 独占窗口 -->
     <main v-if="fullscreen" class="main main-fullscreen">
-      <RouterView />
+      <RouterView v-slot="{ Component }">
+        <Transition name="page" mode="out-in">
+          <component :is="Component" :key="route.path" />
+        </Transition>
+      </RouterView>
     </main>
 
     <template v-else>
@@ -84,11 +87,7 @@ async function closeWindow() {
         <!-- 桌面侧栏 -->
         <aside v-if="!mobile" class="sidebar">
           <div class="brand">
-            <img src="/icon.svg" alt="" class="brand-mark" />
-            <div class="brand-text">
-              <span class="brand-name">{{ t.appName }}</span>
-              <span class="brand-sub">{{ t.appNameEn }}</span>
-            </div>
+            <img src="/logo-text.svg" alt="" class="brand-logo" />
           </div>
 
           <nav class="side-nav">
@@ -126,12 +125,15 @@ async function closeWindow() {
 
         <!-- 移动端顶栏 -->
         <header v-if="mobile" class="m-topbar">
-          <img src="/icon.svg" alt="" class="brand-mark" />
-          <span class="brand-name">{{ t.appName }}</span>
+          <img src="/logo-text.svg" alt="" class="m-logo" />
         </header>
 
         <main class="main">
-          <RouterView />
+          <RouterView v-slot="{ Component }">
+            <Transition name="page" mode="out-in">
+              <component :is="Component" :key="route.path" />
+            </Transition>
+          </RouterView>
         </main>
 
         <!-- 移动端底部导航 -->
@@ -184,17 +186,10 @@ async function closeWindow() {
   min-width: 0;
 }
 
-.tb-mark {
-  width: 18px;
-  height: 18px;
-  border-radius: 5px;
-}
-
-.tb-name {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--ink-2);
-  white-space: nowrap;
+.tb-logo {
+  height: 15px;
+  width: auto;
+  display: block;
 }
 
 .tb-actions {
@@ -253,33 +248,13 @@ async function closeWindow() {
 .brand {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 2px 8px 14px;
+  padding: 6px 8px 14px;
 }
 
-.brand-mark {
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
-}
-
-.brand-text {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.2;
-}
-
-.brand-name {
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: 0.01em;
-}
-
-.brand-sub {
-  font-size: 10px;
-  color: var(--ink-3);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+.brand-logo {
+  height: 21px;
+  width: auto;
+  display: block;
 }
 
 .side-nav {
@@ -399,6 +374,12 @@ async function closeWindow() {
   padding-top: env(safe-area-inset-top);
   background: var(--surface);
   border-bottom: 1px solid var(--hairline);
+}
+
+.m-logo {
+  height: 17px;
+  width: auto;
+  display: block;
 }
 
 .app-frame.mobile .main {

@@ -4,7 +4,8 @@ export type Block =
   | { type: 'listItem'; text: string }
   | { type: 'table'; header: string[]; rows: string[][]; source?: string }
 
-export type SourceKind = 'docx' | 'xlsx' | 'text'
+/** 'file' = 无法解析文本的任意文件，仅作为附件随库存档 */
+export type SourceKind = 'docx' | 'xlsx' | 'text' | 'file'
 
 export interface ParsedDoc {
   fileName: string
