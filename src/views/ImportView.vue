@@ -69,6 +69,16 @@ const lowCount = computed(() => {
   return f.drafts.reduce((n, d) => n + Object.values(d.confidence).filter((c) => c < 0.6).length, 0)
 })
 
+/** 单元格图片在未被导入的工作表里时给出提示，避免「导入完没图」的困惑 */
+const strayImages = computed(() => {
+  const f = activeFile.value
+  if (!f?.doc || f.doc.kind !== 'xlsx' || f.images.length === 0) return null
+  const strays = f.images.filter((img) => img.sheet !== f.tableLabel)
+  if (strays.length === 0) return null
+  const sheets = [...new Set(strays.map((i) => i.sheet))].join('、')
+  return t.import.imagesInOtherSheet(strays.length, sheets)
+})
+
 function kindLabel(kind: SourceKind): string {
   return kind === 'docx' ? t.import.kindDocx : kind === 'xlsx' ? t.import.kindXlsx : kind === 'text' ? t.import.kindText : t.import.kindFile
 }
@@ -464,6 +474,11 @@ async function finish() {
           </div>
           <p v-else-if="activeFile.doc?.kind !== 'file'" class="hint">{{ t.import.editCellHint }}</p>
         </div>
+
+        <p v-if="strayImages" class="meta stray-note">
+          <AppIcon name="info" :size="14" />
+          {{ strayImages }}
+        </p>
 
         <div v-if="activeFile.doc?.kind !== 'file'" class="extract-bar">
           <button class="btn btn-primary" @click="reExtract">
@@ -885,6 +900,16 @@ async function finish() {
 .low-note {
   color: var(--warn);
   font-weight: 600;
+}
+
+.stray-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: var(--r-s);
+  background: var(--warn-bg);
+  color: var(--warn);
 }
 
 .drafts {

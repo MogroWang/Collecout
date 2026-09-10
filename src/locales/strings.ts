@@ -187,6 +187,8 @@ export const t = {
     kindText: '纯文本',
     kindFile: '附件文件',
     fileAttachNote: '不提取内容，源文件会随库存档',
+    imagesInOtherSheet: (n: number, sheets: string) =>
+      `检测到 ${n} 张单元格图片在工作表「${sheets}」中，当前导入的工作表不包含它们。需要导入图片请把工作表切换到对应表。`,
     chooseTemplate: '选择一个模板来提取信息',
     templateAutoNote: '「自动识别」会分析文档结构，现场推断字段。',
     startExtract: '开始提取',

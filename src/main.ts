@@ -11,7 +11,12 @@ import './styles/base.css'
 async function bootstrap() {
   await initRepo()
   const app = createApp(App)
-  app.use(createPinia())
+  const pinia = createPinia()
+  app.use(pinia)
+  if (import.meta.env.DEV) {
+    // 开发调试：控制台可拿到 pinia 实例驱动 store
+    ;(window as unknown as Record<string, unknown>).__pinia = pinia
+  }
 
   const settings = useSettingsStore()
   await settings.load()
