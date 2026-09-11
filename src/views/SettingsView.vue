@@ -17,6 +17,7 @@ const libraries = useLibrariesStore()
 const templates = useTemplatesStore()
 const ui = useUiStore()
 const router = useRouter()
+ui.setPageTitle(t.settings.title)
 
 const dataPath = ref('')
 const defaultPath = ref('')

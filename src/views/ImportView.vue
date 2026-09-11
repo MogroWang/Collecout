@@ -24,6 +24,7 @@ const importer = useImporterStore()
 const libraries = useLibrariesStore()
 const templates = useTemplatesStore()
 const ui = useUiStore()
+ui.setPageTitle(t.import.title)
 
 const dragging = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
@@ -389,9 +390,19 @@ async function finish() {
       </button>
       <h1 class="large-title">{{ t.import.title }}</h1>
       <ol class="steps">
-        <li v-for="(label, i) in t.import.steps" :key="label" :class="{ on: step === i + 1, done: step > i + 1 }">
-          <span class="dot">{{ step > i + 1 ? '✓' : i + 1 }}</span>
-          {{ label }}
+        <li v-for="(label, i) in t.import.steps" :key="label">
+          <!-- 已走过的步骤可点回；当前步与未解锁步不可点 -->
+          <button
+            class="step-btn"
+            :class="{ on: step === i + 1, done: step > i + 1 }"
+            type="button"
+            :disabled="step <= i + 1"
+            :aria-current="step === i + 1 ? 'step' : undefined"
+            @click="importer.step = i + 1"
+          >
+            <span class="dot">{{ step > i + 1 ? '✓' : i + 1 }}</span>
+            {{ label }}
+          </button>
         </li>
       </ol>
     </header>
@@ -794,15 +805,34 @@ async function finish() {
 
 .steps li {
   display: flex;
+}
+
+/* 步骤按钮：走过的步骤可点回，hover 反馈落在按下前 */
+.step-btn {
+  display: flex;
   align-items: center;
   gap: 6px;
   font-size: 12px;
   color: var(--ink-3);
   padding: 4px 10px 4px 4px;
   border-radius: 999px;
+  transition: background 150ms ease, color 150ms ease, transform 100ms ease-out;
 }
 
-.steps li .dot {
+.step-btn:not(:disabled):hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+.step-btn:not(:disabled):active {
+  transform: scale(0.96);
+}
+
+.step-btn:disabled {
+  cursor: default;
+}
+
+.step-btn .dot {
   display: grid;
   place-items: center;
   width: 20px;
@@ -813,17 +843,17 @@ async function finish() {
   font-variant-numeric: tabular-nums;
 }
 
-.steps li.on {
+.step-btn.on {
   color: var(--accent);
   font-weight: 600;
 }
 
-.steps li.on .dot {
+.step-btn.on .dot {
   background: var(--accent);
   color: var(--accent-ink);
 }
 
-.steps li.done {
+.step-btn.done {
   color: var(--ink-2);
 }
 
@@ -1321,6 +1351,12 @@ async function finish() {
   -webkit-backdrop-filter: blur(20px) saturate(180%);
   border: 1px solid var(--hairline);
   box-shadow: var(--shadow-1);
+}
+
+/* 底部导航按钮用最大圆角，与外层药丸呼应 */
+.foot-pill .btn {
+  border-radius: 999px;
+  padding: 0 18px;
 }
 
 @media (prefers-reduced-transparency: reduce) {

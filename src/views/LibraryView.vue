@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, watchEffect } from 'vue'
 import { useRouter } from 'vue-router'
 import type { Entry, Template } from '../core/models'
 import { newEntry } from '../core/models'
@@ -46,6 +46,8 @@ const showFilterPanel = ref(false)
 const showSortPanel = ref(false)
 
 const library = computed(() => libraries.byId(props.id))
+/** 库名跟随到标题栏，重命名后即时更新 */
+watchEffect(() => ui.setPageTitle(library.value?.name ?? t.nav.libraries))
 const templateName = computed(() => templates.byId(library.value?.templateId ?? '')?.name ?? '')
 /** 字段用库自带的快照（与条目值的键一致），模板仅提供名字展示 */
 const template = computed<Template>(() => ({
@@ -66,6 +68,8 @@ watch(
     multiSelect.value = false
     openEntryId.value = null
     creating.value = false
+    // 库切换后表格滚动区回到顶部
+    void nextTick(() => entriesWrap.value?.scrollTo(0, 0))
   },
 )
 
@@ -175,8 +179,8 @@ function onMarqueeStart(e: MouseEvent) {
   const target = e.target as HTMLElement
   if (target.closest('input, button, a, select, textarea, label')) return
   e.preventDefault()
-  // 普通拖拽 = 以框选结果为准；按住 Ctrl/Cmd 拖拽 = 在已有选择上追加
-  marqueeBase = e.ctrlKey || e.metaKey ? new Set(selected.value) : new Set()
+  // 普通拖拽 = 以框选结果为准；按住 Ctrl/Cmd/Shift 拖拽 = 在已有选择上追加
+  marqueeBase = e.ctrlKey || e.metaKey || e.shiftKey ? new Set(selected.value) : new Set()
   marqueePending = true
   marqueeActive = false
   marqueeStart = { x: e.clientX, y: e.clientY }
@@ -392,7 +396,8 @@ async function pickNewLocation() {
 </script>
 
 <template>
-  <div v-if="library" class="page">
+  <!-- 多选模式下可在页面任意空白处按下拖出选框（含表头/卡片间隙），这里接管 mousedown -->
+  <div v-if="library" class="page" @mousedown="onMarqueeStart" @click.capture="onCaptureClick">
     <header class="page-head">
       <div class="head-text">
         <h1 class="large-title">{{ library.name }}</h1>
@@ -444,13 +449,52 @@ async function pickNewLocation() {
           <button :class="{ on: view === 'cards' }" @click="view = 'cards'">{{ t.library.cards }}</button>
         </div>
 
+        <!-- 多选 / 筛选 / 排序紧跟视图切换之后 -->
+        <button class="btn" :class="{ 'filter-on': multiSelect }" :title="t.library.multiSelectHint" @click="toggleMultiSelect">
+          <AppIcon name="check" :size="15" />
+          {{ t.library.multiSelect }}
+        </button>
+
+        <div class="filter-anchor">
+          <button class="btn" :class="{ 'filter-on': isFiltering }" @click="showFilterPanel = !showFilterPanel">
+            <AppIcon name="filter" :size="15" />
+            {{ t.library.filter }}
+            <span v-if="filter.rules.length > 0" class="chip">{{ filter.rules.length }}</span>
+          </button>
+          <Transition name="pop">
+            <div v-if="showFilterPanel" class="filter-pop card">
+              <FilterPopover
+                :fields="fields"
+                :state="filter"
+                @update:state="(s) => { filter = s; showFilterPanel = false }"
+              />
+            </div>
+          </Transition>
+        </div>
+
+        <div class="filter-anchor">
+          <button class="btn" :class="{ 'filter-on': sort !== null }" @click="showSortPanel = !showSortPanel">
+            <AppIcon name="sort" :size="15" />
+            <template v-if="sort">
+              {{ fields.find((f) => f.id === sort!.fieldId)?.name ?? t.library.sort }}
+              {{ sort.dir === 'asc' ? '↑' : '↓' }}
+            </template>
+            <template v-else>{{ t.library.sort }}</template>
+          </button>
+          <Transition name="pop">
+            <div v-if="showSortPanel" class="filter-pop card">
+              <SortMenu :fields="fields" :sort="sort" @update:sort="(s) => { sort = s; showSortPanel = false }" />
+            </div>
+          </Transition>
+        </div>
+
         <span class="count meta">{{ t.library.entryCount(visibleEntries.length, library.entries.length) }}</span>
 
         <button v-if="isFiltering" class="btn btn-ghost btn-compact" @click="filter = { ...EMPTY_FILTER }; sort = null">
           {{ t.library.clearFilter }}
         </button>
 
-        <!-- 右侧操作区：多选 / 筛选 / 排序成组，搜索框靠右对齐 -->
+        <!-- 右侧：选中状态与搜索框靠右对齐 -->
         <div class="tb-right">
           <template v-if="selected.size > 0">
             <span class="chip">{{ t.library.selected(selected.size) }}</span>
@@ -458,44 +502,6 @@ async function pickNewLocation() {
               {{ t.library.clearSelection }}
             </button>
           </template>
-
-          <button class="btn" :class="{ 'filter-on': multiSelect }" :title="t.library.multiSelectHint" @click="toggleMultiSelect">
-            <AppIcon name="check" :size="15" />
-            {{ t.library.multiSelect }}
-          </button>
-
-          <div class="filter-anchor">
-            <button class="btn" :class="{ 'filter-on': isFiltering }" @click="showFilterPanel = !showFilterPanel">
-              <AppIcon name="filter" :size="15" />
-              {{ t.library.filter }}
-              <span v-if="filter.rules.length > 0" class="chip">{{ filter.rules.length }}</span>
-            </button>
-            <Transition name="pop">
-              <div v-if="showFilterPanel" class="filter-pop card">
-                <FilterPopover
-                  :fields="fields"
-                  :state="filter"
-                  @update:state="(s) => { filter = s; showFilterPanel = false }"
-                />
-              </div>
-            </Transition>
-          </div>
-
-          <div class="filter-anchor">
-            <button class="btn" :class="{ 'filter-on': sort !== null }" @click="showSortPanel = !showSortPanel">
-              <AppIcon name="sort" :size="15" />
-              <template v-if="sort">
-                {{ fields.find((f) => f.id === sort!.fieldId)?.name ?? t.library.sort }}
-                {{ sort.dir === 'asc' ? '↑' : '↓' }}
-              </template>
-              <template v-else>{{ t.library.sort }}</template>
-            </button>
-            <Transition name="pop">
-              <div v-if="showSortPanel" class="filter-pop card">
-                <SortMenu :fields="fields" :sort="sort" @update:sort="(s) => { sort = s; showSortPanel = false }" />
-              </div>
-            </Transition>
-          </div>
 
           <div class="search-wrap">
             <AppIcon name="search" :size="14" class="search-icon" />
@@ -513,8 +519,6 @@ async function pickNewLocation() {
         v-else
         ref="entriesWrap"
         class="entries-wrap"
-        @mousedown="onMarqueeStart"
-        @click.capture="onCaptureClick"
         @touchstart="onTouchStart"
         @touchmove="onTouchMove"
         @touchend="onTouchEnd"
@@ -650,12 +654,17 @@ async function pickNewLocation() {
 </template>
 
 <style scoped>
+/* 页面占满主区高度：标题/工具栏固定，条目区自身滚动（垂直 + 水平独立滚动条） */
 .page {
-  padding: 28px 32px 48px;
+  padding: 24px 32px 16px;
   max-width: 1200px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 .page-head {
+  flex: none;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -688,27 +697,13 @@ async function pickNewLocation() {
   flex: none;
 }
 
-/* 工具栏：内容滚动时浮在其上，半透明材质 */
+/* 工具栏：随页面固定，不再悬浮于内容之上 */
 .toolbar {
-  position: sticky;
-  top: 0;
-  z-index: 5;
+  flex: none;
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 0;
-  margin-bottom: 8px;
-  background: color-mix(in srgb, var(--bg) 72%, transparent);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-}
-
-@media (prefers-reduced-transparency: reduce) {
-  .toolbar {
-    background: var(--bg);
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-  }
+  padding: 6px 0 10px;
 }
 
 .search-wrap {
@@ -753,7 +748,7 @@ async function pickNewLocation() {
   font-variant-numeric: tabular-nums;
 }
 
-/* 右侧操作区：三个功能按钮成组，搜索框收在最后靠右 */
+/* 右侧操作区：选中状态与搜索框收在最后靠右 */
 .tb-right {
   margin-left: auto;
   display: flex;
@@ -766,6 +761,20 @@ async function pickNewLocation() {
 .btn-compact {
   height: 28px;
   font-size: 12px;
+}
+
+/* 条目滚动区：垂直与水平滚动条独立于页面，滚动的是这块容器 */
+.entries-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  border-radius: var(--r-s);
+}
+
+/* 表格按内容自然宽度展开：列多时出现水平滚动条，窄表仍撑满容器 */
+.entries-wrap :deep(.data-table) {
+  width: max-content;
+  min-width: 100%;
 }
 
 /* 框选矩形 */

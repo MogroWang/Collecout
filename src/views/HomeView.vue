@@ -16,6 +16,7 @@ const router = useRouter()
 const libraries = useLibrariesStore()
 const templates = useTemplatesStore()
 const ui = useUiStore()
+ui.setPageTitle(t.home.title)
 
 const showNew = ref(false)
 const newName = ref('')

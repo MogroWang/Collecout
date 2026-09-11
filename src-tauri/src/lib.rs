@@ -1,3 +1,4 @@
+use tauri::Manager;
 use tauri_plugin_fs::FsExt;
 
 /// 把用户通过对话框选中的路径登记进 tauri-plugin-fs 的运行时 scope。
@@ -22,6 +23,20 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         // 记住窗口上次关闭时的位置与大小，下次启动自动恢复
         .plugin(tauri_plugin_window_state::Builder::default().build())
+        // 窗口以隐藏方式启动（tauri.conf.json visible: false），由前端就绪后显示；
+        // 这里兜底：万一前端脚本出错没能显示窗口，3 秒后强制亮出，避免「点了图标没反应」
+        .setup(|app| {
+            let handle = app.handle().clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_secs(3));
+                if let Some(win) = handle.get_webview_window("main") {
+                    if !win.is_visible().unwrap_or(true) {
+                        let _ = win.show();
+                    }
+                }
+            });
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![extend_fs_scope])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

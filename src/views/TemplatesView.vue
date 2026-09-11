@@ -14,6 +14,7 @@ import EmptyState from '../components/EmptyState.vue'
 
 const store = useTemplatesStore()
 const ui = useUiStore()
+ui.setPageTitle(t.templates.title)
 
 const selectedId = ref<string>(store.all[0]?.id ?? '')
 const draft = reactive<Template>(plainClone(store.all[0] ?? { id: '', name: '', description: '', builtin: true, fields: [] }))

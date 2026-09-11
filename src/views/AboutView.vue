@@ -1,8 +1,12 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { t } from '../locales/strings'
+import { useUiStore } from '../stores/ui'
 import { openInBrowser } from '../lib/desktop'
 import AppIcon from '../components/AppIcon.vue'
+
+const ui = useUiStore()
+ui.setPageTitle(t.about.title)
 
 const REPO_RELEASES = 'https://github.com/MogroWang/Collecout/releases'
 const LATEST_API = 'https://api.github.com/repos/MogroWang/Collecout/releases/latest'

@@ -2,7 +2,7 @@
 export const t = {
   appName: '萃序',
   appNameEn: 'Collecout',
-  version: '0.5.0',
+  version: '0.6.0',
 
   nav: {
     libraries: '库',
@@ -103,7 +103,7 @@ export const t = {
     deleted: (n: number) => `已删除 ${n} 条条目`,
     addEntry: '添加条目',
     multiSelect: '多选',
-    multiSelectHint: '拖动框选 · Ctrl/Shift+点选 · 触屏左右滑动选择',
+    multiSelectHint: '空白处拖动框选 · Shift+框选在已有选择上追加 · Ctrl/Shift+点选 · 触屏左右滑动选择',
     location: '存放位置',
     locationInner: '软件数据文件夹',
     changeLocation: '更改位置',
