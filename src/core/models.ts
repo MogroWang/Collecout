@@ -98,7 +98,7 @@ export interface Library {
   fileName?: string | null
 }
 
-export type ExportFormat = 'markdown' | 'text' | 'csv' | 'json' | 'folder' | 'docx' | 'pdf' | 'image'
+export type ExportFormat = 'markdown' | 'text' | 'csv' | 'json' | 'folder' | 'docx' | 'xlsx' | 'pdf' | 'image'
 
 export type ThemeMode = 'system' | 'light' | 'dark'
 

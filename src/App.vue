@@ -54,23 +54,18 @@ async function closeWindow() {
 
 <template>
   <div class="app-frame" :class="{ mobile }">
-    <!-- 自定义标题栏：替代系统原生标题栏，可拖动窗口 -->
-    <div v-if="isDesktop()" class="titlebar" data-tauri-drag-region>
-      <div class="tb-brand" data-tauri-drag-region>
-        <img src="/logo-text.svg" alt="" class="tb-logo" />
-      </div>
-      <div class="tb-actions">
-        <button class="tb-btn" :aria-label="t.titlebar.minimize" @click="minimize">
-          <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 6h8" stroke="currentColor" stroke-width="1.2" /></svg>
-        </button>
-        <button class="tb-btn" :aria-label="maximized ? t.titlebar.restore : t.titlebar.maximize" @click="toggleMaximize">
-          <svg v-if="!maximized" width="12" height="12" viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7" rx="1" fill="none" stroke="currentColor" stroke-width="1.2" /></svg>
-          <svg v-else width="12" height="12" viewBox="0 0 12 12"><rect x="1.5" y="3.5" width="6" height="6" rx="1" fill="none" stroke="currentColor" stroke-width="1.1" /><path d="M4 3.5V2.6a1 1 0 0 1 1-1h4.4a1 1 0 0 1 1 1V7a1 1 0 0 1-1 1h-.9" fill="none" stroke="currentColor" stroke-width="1.1" /></svg>
-        </button>
-        <button class="tb-btn tb-close" :aria-label="t.titlebar.close" @click="closeWindow">
-          <AppIcon name="x" :size="13" />
-        </button>
-      </div>
+    <!-- 悬浮窗口控件（仅桌面端）：无标题栏，三个控件收进一颗药丸，药丸本身可拖动窗口 -->
+    <div v-if="isDesktop()" class="win-controls" data-tauri-drag-region>
+      <button class="wc-btn" :aria-label="t.titlebar.minimize" @click="minimize">
+        <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 6h8" stroke="currentColor" stroke-width="1.2" /></svg>
+      </button>
+      <button class="wc-btn" :aria-label="maximized ? t.titlebar.restore : t.titlebar.maximize" @click="toggleMaximize">
+        <svg v-if="!maximized" width="12" height="12" viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7" rx="1" fill="none" stroke="currentColor" stroke-width="1.2" /></svg>
+        <svg v-else width="12" height="12" viewBox="0 0 12 12"><rect x="1.5" y="3.5" width="6" height="6" rx="1" fill="none" stroke="currentColor" stroke-width="1.1" /><path d="M4 3.5V2.6a1 1 0 0 1 1-1h4.4a1 1 0 0 1 1 1V7a1 1 0 0 1-1 1h-.9" fill="none" stroke="currentColor" stroke-width="1.1" /></svg>
+      </button>
+      <button class="wc-btn wc-close" :aria-label="t.titlebar.close" @click="closeWindow">
+        <AppIcon name="x" :size="13" />
+      </button>
     </div>
 
     <!-- OOBE 独占窗口 -->
@@ -169,59 +164,56 @@ async function closeWindow() {
   height: 100%;
 }
 
-/* ---------- 自定义标题栏 ---------- */
-.titlebar {
-  flex: none;
+/* ---------- 悬浮窗口控件（药丸） ---------- */
+.win-controls {
+  position: fixed;
+  top: 8px;
+  right: 10px;
+  z-index: 60;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  height: 38px;
-  padding-left: 12px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--hairline);
+  gap: 2px;
+  height: 30px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 68%, transparent);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid var(--hairline);
+  box-shadow: var(--shadow-1);
   user-select: none;
   -webkit-user-select: none;
 }
 
-.tb-brand {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
+@media (prefers-reduced-transparency: reduce) {
+  .win-controls {
+    background: var(--surface);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
 }
 
-.tb-logo {
-  height: 15px;
-  width: auto;
-  display: block;
-}
-
-.tb-actions {
-  display: flex;
-  align-self: stretch;
-}
-
-.tb-btn {
+.wc-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 44px;
-  align-self: stretch;
+  width: 30px;
+  height: 24px;
+  border-radius: 999px;
   color: var(--ink-2);
-  border-radius: 0;
   transition: background 120ms ease, color 120ms ease;
 }
 
-.tb-btn:hover {
+.wc-btn:hover {
   background: var(--surface-2);
   color: var(--ink);
 }
 
-.tb-btn:active {
-  transform: none;
+.wc-btn:active {
+  transform: scale(0.94);
 }
 
-.tb-close:hover {
+.wc-close:hover {
   background: var(--danger);
   color: #fff;
 }
@@ -372,6 +364,11 @@ async function closeWindow() {
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
+}
+
+/* 悬浮药丸控件占据右上角，桌面端主内容整体下移留出空隙 */
+.app-frame:not(.mobile) .main {
+  padding-top: 16px;
 }
 
 /* ---------- 移动端 ---------- */

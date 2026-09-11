@@ -484,6 +484,16 @@ export const useLibrariesStore = defineStore('libraries', {
       lib.entries[i] = { ...entry, updatedAt: new Date().toISOString() }
       persist(lib)
     },
+    /** 手动新建一条条目（值按键即库字段 id，在条目抽屉里编辑后提交） */
+    addEntry(id: string, values: Record<string, string | number>): Entry {
+      const lib = this.byId(id)
+      if (!lib) throw new Error('库不存在')
+      const entry = newEntry(id, { fileName: '手动添加', locator: '' })
+      entry.values = values
+      lib.entries.push(entry)
+      persist(lib)
+      return entry
+    },
     removeEntries(id: string, entryIds: string[]) {
       const lib = this.byId(id)
       if (!lib) return

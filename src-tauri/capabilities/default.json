@@ -29,6 +29,9 @@
     "fs:allow-write-text-file",
     "fs:allow-copy-file",
     "opener:default",
-    "opener:allow-reveal-item-in-dir"
+    "opener:allow-open-path",
+    "opener:allow-open-url",
+    "opener:allow-reveal-item-in-dir",
+    "window-state:default"
   ]
 }

@@ -1,8 +1,23 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { Entry, ExportFormat, Library, Template } from '../core/models'
-import { exportCsv, exportJson, exportMarkdown, exportPlainText, exportDocxBytes, exportFolderPlan, renderPages, canvasToJpeg, canvasToPng, buildPdf, type TextExportStyle } from '../core/export'
+import {
+  exportCsv,
+  exportJson,
+  exportMarkdown,
+  exportPlainText,
+  exportDocxBytes,
+  exportXlsxBytes,
+  exportFolderPlan,
+  renderPages,
+  canvasToJpeg,
+  canvasToPng,
+  buildPdf,
+  type TextExportStyle,
+  type FolderImageLayout,
+} from '../core/export'
 import { useSettingsStore } from '../stores/settings'
+import { useLibrariesStore } from '../stores/libraries'
 import { useUiStore } from '../stores/ui'
 import { t } from '../locales/strings'
 import { sanitizeFileName } from '../core/export'
@@ -22,6 +37,7 @@ const props = defineProps<{
 const emit = defineEmits<{ close: [] }>()
 
 const settings = useSettingsStore()
+const libraries = useLibrariesStore()
 const ui = useUiStore()
 
 const scope = ref<'all' | 'filtered' | 'selected'>('all')
@@ -30,10 +46,12 @@ const format = ref<ExportFormat>(settings.settings.defaultExportFormat)
 const textStyle = ref<TextExportStyle>('tsv')
 /** 本地文件夹导出的文本格式 */
 const folderExt = ref<'md' | 'txt'>('md')
+/** 本地文件夹导出的图片组织方式 */
+const folderLayout = ref<FolderImageLayout>('row')
 const exportedPath = ref<string | null>(null)
 const exportedIsDir = ref(false)
 
-const BINARY_FORMATS: ExportFormat[] = ['docx', 'pdf', 'image']
+const BINARY_FORMATS: ExportFormat[] = ['docx', 'xlsx', 'pdf', 'image']
 const isBinaryFormat = computed(() => BINARY_FORMATS.includes(format.value))
 
 const entries = computed<Entry[]>(() => {
@@ -46,6 +64,7 @@ const formats: { id: ExportFormat; name: string; desc: string }[] = [
   { id: 'markdown', name: t.exportDialog.fmtMarkdown, desc: t.exportDialog.fmtMarkdownDesc },
   { id: 'text', name: t.exportDialog.fmtText, desc: t.exportDialog.fmtTextDesc },
   { id: 'docx', name: t.exportDialog.fmtDocx, desc: t.exportDialog.fmtDocxDesc },
+  { id: 'xlsx', name: t.exportDialog.fmtXlsx, desc: t.exportDialog.fmtXlsxDesc },
   { id: 'pdf', name: t.exportDialog.fmtPdf, desc: t.exportDialog.fmtPdfDesc },
   { id: 'image', name: t.exportDialog.fmtImage, desc: t.exportDialog.fmtImageDesc },
   { id: 'csv', name: t.exportDialog.fmtCsv, desc: t.exportDialog.fmtCsvDesc },
@@ -54,6 +73,43 @@ const formats: { id: ExportFormat; name: string; desc: string }[] = [
 ]
 
 const selection = computed(() => ({ fields: chosenFields.value }))
+
+/* ---------- 条目图片字节：所有格式的图片随文导出共用 ---------- */
+const imageBytes = ref<Map<string, Uint8Array>>(new Map())
+/** storedAs → 导入时的原始文件名（文件夹导出按原名落盘） */
+const imageNames = ref<Map<string, string>>(new Map())
+
+const imageSignature = computed(() =>
+  entries.value.flatMap((e) => (e.images ?? []).map((i) => i.storedAs)).filter((v, i, a) => a.indexOf(v) === i).join(','),
+)
+
+watch(imageSignature, async () => {
+  const bytes = new Map<string, Uint8Array>()
+  for (const storedAs of imageSignature.value.split(',')) {
+    if (!storedAs) continue
+    const blob = await libraries.readImage(props.library.id, storedAs)
+    if (!blob) continue
+    bytes.set(storedAs, new Uint8Array(await blob.arrayBuffer()))
+  }
+  imageBytes.value = bytes
+}, { immediate: true })
+
+watch(() => props.library.sources, (sources) => {
+  const names = new Map<string, string>()
+  for (const s of sources) for (const f of s.files ?? []) if (f.kind === 'image') names.set(f.storedAs, f.name)
+  imageNames.value = names
+}, { immediate: true, deep: true })
+
+/** 纯文本单文件导出时，图片写到文件旁的 images/ 目录 */
+async function writeImagesBeside(filePath: string): Promise<boolean> {
+  if (imageBytes.value.size === 0) return false
+  const dir = filePath.includes('/') ? filePath.slice(0, filePath.lastIndexOf('/')) : '.'
+  await mkdirAbsolute(`${dir}/images`)
+  for (const [storedAs, bytes] of imageBytes.value) {
+    await writeBinaryAbsolute(`${dir}/images/${storedAs}`, bytes)
+  }
+  return true
+}
 
 /** 按当前选项生成导出内容（复制到剪贴板与文本导出共用） */
 function buildResult(): { fileName: string; content: string } | null {
@@ -84,7 +140,7 @@ const preview = computed<string | null>(() => {
     case 'json':
       return exportJson(props.library, props.template, sample, selection.value).content
     case 'folder': {
-      const plan = exportFolderPlan(props.library, props.template, sample, selection.value, folderExt.value)
+      const plan = exportFolderPlan(props.library, props.template, sample, selection.value, folderExt.value, folderLayout.value, { bytes: imageBytes.value, nameOf: imageNames.value })
       return Object.entries(plan.files)
         .map(([name, content]) => `/* ${name} */\n${content}`)
         .join('\n')
@@ -106,6 +162,7 @@ async function doExport() {
   try {
     if (format.value === 'folder') await exportAsFolder()
     else if (format.value === 'docx') await exportAsDocx()
+    else if (format.value === 'xlsx') await exportAsXlsx()
     else if (format.value === 'pdf' || format.value === 'image') await exportAsPaged()
     else await exportAsFile()
     // 文件成功落盘后才关闭导出窗口
@@ -118,7 +175,7 @@ async function doExport() {
 async function copyResult() {
   if (entries.value.length === 0 || isBinaryFormat.value) return
   if (format.value === 'folder') {
-    const plan = exportFolderPlan(props.library, props.template, entries.value, selection.value, folderExt.value)
+    const plan = exportFolderPlan(props.library, props.template, entries.value, selection.value, folderExt.value, folderLayout.value, { bytes: imageBytes.value, nameOf: imageNames.value })
     const text = Object.entries(plan.files)
       .map(([name, content]) => `/* ${name} */\n${content}`)
       .join('\n\n')
@@ -140,10 +197,16 @@ async function exportAsFile() {
     const path = await pickSavePath(result.fileName)
     if (!path) return
     await writeTextAbsolute(path, result.content)
+    // 纯文本格式：单元格图片以原文件形式写到 images/ 目录，路径已写在文本里
+    await writeImagesBeside(path)
     exportedPath.value = path
     exportedIsDir.value = false
   } else {
     downloadText(result.fileName, result.content)
+    for (const [storedAs, bytes] of imageBytes.value) {
+      downloadBlob(`images/${storedAs}`, new Blob([bytes.slice().buffer as ArrayBuffer]))
+      await new Promise((r) => setTimeout(r, 200))
+    }
     exportedPath.value = result.fileName
     exportedIsDir.value = false
   }
@@ -151,9 +214,9 @@ async function exportAsFile() {
   await settings.set({ defaultExportFormat: format.value })
 }
 
-/** Word 文档：单文件二进制导出 */
+/** Word 文档：单文件二进制导出（图片行内嵌入） */
 async function exportAsDocx() {
-  const bytes = exportDocxBytes(props.library, props.template, entries.value, selection.value)
+  const bytes = exportDocxBytes(props.library, props.template, entries.value, selection.value, imageBytes.value)
   const fileName = sanitizeFileName(`${props.library.name} 导出 ${new Date().toISOString().slice(0, 10)}`) + '.docx'
   const blob = new Blob([bytes.slice().buffer], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' })
   if (isDesktop()) {
@@ -171,9 +234,29 @@ async function exportAsDocx() {
   await settings.set({ defaultExportFormat: format.value })
 }
 
+/** Excel 表格：单文件二进制导出（图片嵌入单元格） */
+async function exportAsXlsx() {
+  const bytes = exportXlsxBytes(props.library, props.template, entries.value, selection.value, imageBytes.value)
+  const fileName = sanitizeFileName(`${props.library.name} 导出 ${new Date().toISOString().slice(0, 10)}`) + '.xlsx'
+  const blob = new Blob([bytes.slice().buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+  if (isDesktop()) {
+    const path = await pickSavePath(fileName)
+    if (!path) return
+    await writeBinaryAbsolute(path, bytes)
+    exportedPath.value = path
+    exportedIsDir.value = false
+  } else {
+    downloadBlob(fileName, blob)
+    exportedPath.value = fileName
+    exportedIsDir.value = false
+  }
+  ui.toast(t.exportDialog.exportedTo(exportedPath.value))
+  await settings.set({ defaultExportFormat: format.value })
+}
+
 /** PDF（单文件）/ 图片（每页一张 PNG） */
 async function exportAsPaged() {
-  const pages = renderPages(props.library, props.template, entries.value, selection.value)
+  const pages = await renderPages(props.library, props.template, entries.value, selection.value, imageBytes.value)
   const base = sanitizeFileName(`${props.library.name} 导出 ${new Date().toISOString().slice(0, 10)}`)
   if (format.value === 'pdf') {
     const bytes = buildPdf(pages.map((c) => ({ jpeg: canvasToJpeg(c), pixelW: c.width, pixelH: c.height })))
@@ -215,7 +298,7 @@ async function exportAsPaged() {
 }
 
 async function exportAsFolder() {
-  const plan = exportFolderPlan(props.library, props.template, entries.value, selection.value, folderExt.value)
+  const plan = exportFolderPlan(props.library, props.template, entries.value, selection.value, folderExt.value, folderLayout.value, { bytes: imageBytes.value, nameOf: imageNames.value })
   if (isDesktop()) {
     const dir = await pickDirectory()
     if (!dir) return
@@ -224,12 +307,23 @@ async function exportAsFolder() {
     for (const [name, content] of Object.entries(plan.files)) {
       await writeTextAbsolute(`${target}/${name}`, content)
     }
+    // 图片原文件（可能带子文件夹）逐个落盘
+    for (const [rel, bytes] of Object.entries(plan.binaries)) {
+      const full = `${target}/${rel}`
+      const sub = full.slice(0, full.lastIndexOf('/'))
+      if (sub) await mkdirAbsolute(sub)
+      await writeBinaryAbsolute(full, bytes)
+    }
     await writeTextAbsolute(`${target}/index.json`, plan.indexJson)
     exportedPath.value = target
     exportedIsDir.value = true
   } else {
     for (const [name, content] of Object.entries(plan.files)) {
       downloadText(name, content)
+      await new Promise((r) => setTimeout(r, 200))
+    }
+    for (const [rel, bytes] of Object.entries(plan.binaries)) {
+      downloadBlob(rel.split('/').pop() ?? rel, new Blob([bytes.slice().buffer as ArrayBuffer]))
       await new Promise((r) => setTimeout(r, 200))
     }
     exportedPath.value = plan.dirName
@@ -308,7 +402,7 @@ async function reveal() {
           </label>
         </div>
 
-        <!-- 本地文件夹：选择条目文件的格式 -->
+        <!-- 本地文件夹：选择条目文件的格式与图片的组织方式 -->
         <div v-if="format === 'folder'" class="text-style">
           <span class="folder-ext-label">{{ t.exportDialog.folderExt }}</span>
           <div class="radio-row">
@@ -319,6 +413,17 @@ async function reveal() {
             <label class="radio">
               <input v-model="folderExt" type="radio" value="txt" />
               {{ t.exportDialog.folderExtTxt }}
+            </label>
+          </div>
+          <span class="folder-ext-label">{{ t.exportDialog.folderImageLayout }}</span>
+          <div class="radio-row">
+            <label class="radio">
+              <input v-model="folderLayout" type="radio" value="row" />
+              {{ t.exportDialog.folderImageRow }}
+            </label>
+            <label class="radio">
+              <input v-model="folderLayout" type="radio" value="column" />
+              {{ t.exportDialog.folderImageColumn }}
             </label>
           </div>
         </div>

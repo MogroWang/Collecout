@@ -1,7 +1,18 @@
-import type { Entry, Template } from '../models'
+import type { Entry, FieldDef, Template } from '../models'
 
 export interface ExportSelection {
   fields: string[]
+}
+
+/** 条目图片引用（Entry.images 的子集视图） */
+export interface EntryImageRef {
+  storedAs: string
+  fieldId?: string
+}
+
+/** 条目在所选字段范围内的图片；fieldId 为空 = 条目级图片，始终保留 */
+export function entryImagesOf(entry: Entry, fields: FieldDef[]): EntryImageRef[] {
+  return (entry.images ?? []).filter((img) => !img.fieldId || fields.some((f) => f.id === img.fieldId))
 }
 
 export function selectedFields(template: Template, ids: string[] | null) {

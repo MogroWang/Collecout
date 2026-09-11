@@ -7,7 +7,7 @@ import AppDrawer from './AppDrawer.vue'
 import AppIcon from './AppIcon.vue'
 import FieldInput from './FieldInput.vue'
 
-const props = defineProps<{ library: Library; template: Template; entry: Entry }>()
+const props = defineProps<{ library: Library; template: Template; entry: Entry; /** 手动新建模式：不显示删除与来源 */ creating?: boolean }>()
 const emit = defineEmits<{ close: []; save: [entry: Entry]; delete: [id: string] }>()
 
 const libraries = useLibrariesStore()
@@ -65,7 +65,7 @@ function isTitle(field: Template['fields'][number]): boolean {
 <template>
   <AppDrawer @close="emit('close')">
     <template #title>
-      <h2>{{ t.entryDrawer.title }}</h2>
+      <h2>{{ props.creating ? t.library.addEntry : t.entryDrawer.title }}</h2>
     </template>
 
     <div class="entry-form">
@@ -105,17 +105,18 @@ function isTitle(field: Template['fields'][number]): boolean {
         </div>
       </div>
 
-      <p class="meta source-line">
+      <p v-if="!props.creating" class="meta source-line">
         <AppIcon name="doc" :size="13" />
         {{ t.entryDrawer.sourceFrom(props.entry.sourceRef.fileName, props.entry.sourceRef.locator) }}
       </p>
     </div>
 
     <template #footer>
-      <button class="btn btn-danger" @click="remove">
+      <button v-if="!props.creating" class="btn btn-danger" @click="remove">
         <AppIcon name="trash" :size="15" />
         {{ t.common.delete }}
       </button>
+      <span v-else class="foot-spacer"></span>
       <button class="btn btn-primary" @click="save">{{ t.common.save }}</button>
     </template>
 
@@ -187,5 +188,9 @@ function isTitle(field: Template['fields'][number]): boolean {
   gap: 6px;
   margin-top: 8px;
   color: var(--ink-3);
+}
+
+.foot-spacer {
+  flex: 1;
 }
 </style>

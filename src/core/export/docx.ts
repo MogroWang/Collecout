@@ -1,5 +1,6 @@
 import type { Entry, Library, Template } from '../models'
-import { entryTitle, formatDate, selectedFields, todayIso, type ExportSelection } from './shared'
+import { entryTitle, entryImagesOf, formatDate, selectedFields, todayIso, type EntryImageRef, type ExportSelection } from './shared'
+import { imageExtOf, readImageSize } from '../image'
 
 /* ---------- 最小 ZIP 实现（stored 不压缩，docx 内容小，足够用） ---------- */
 
@@ -115,10 +116,93 @@ function textParagraphs(text: string, style?: string): string {
   return lines.map((line) => paragraph([{ text: line === '' ? ' ' : line, style }])).join('')
 }
 
-/** 把条目导出为 .docx（零依赖：手写 stored ZIP + 最小 OOXML，Word/WPS/Pages 均可打开） */
-export function exportDocxBytes(library: Library, template: Template, entries: Entry[], selection: ExportSelection): Uint8Array {
+/* ---------- OOXML 内嵌图片 ---------- */
+
+/** Word 可直接展示的图片扩展名（webp 不被 Word 支持，跳过） */
+const DOCX_IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'bmp'])
+
+/** 内嵌图片的显示尺寸：长边不超过 320px，保持纵横比（读不出尺寸时给默认值） */
+function displaySize(bytes: Uint8Array): { w: number; h: number } {
+  const size = readImageSize(bytes)
+  const limit = 320
+  if (!size || size.w <= 0 || size.h <= 0) return { w: 240, h: 180 }
+  const scale = Math.min(1, limit / size.w, limit / size.h)
+  return { w: Math.max(1, Math.round(size.w * scale)), h: Math.max(1, Math.round(size.h * scale)) }
+}
+
+/** 段落内的行内图片（EMU = 像素 × 9525） */
+function imageParagraph(rid: string, docPrId: number, wPx: number, hPx: number): string {
+  const cx = wPx * 9525
+  const cy = hPx * 9525
+  return (
+    `<w:p><w:r><w:drawing>` +
+    `<wp:inline distT="0" distB="0" distL="0" distR="0">` +
+    `<wp:extent cx="${cx}" cy="${cy}"/>` +
+    `<wp:docPr id="${docPrId}" name="图片 ${docPrId}"/>` +
+    `<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">` +
+    `<pic:pic>` +
+    `<pic:nvPicPr><pic:cNvPr id="0" name="图片 ${docPrId}"/><pic:cNvPicPr/></pic:nvPicPr>` +
+    `<pic:blipFill><a:blip r:embed="${rid}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>` +
+    `<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm>` +
+    `<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>` +
+    `</pic:pic>` +
+    `</a:graphicData></a:graphic>` +
+    `</wp:inline></w:drawing></w:r></w:p>`
+  )
+}
+
+/** 收集本次导出要内嵌的图片：storedAs → 媒体文件名 + 关系 id */
+function collectMedia(
+  entries: Entry[],
+  fields: ReturnType<typeof selectedFields>,
+  bytesOf: Map<string, Uint8Array> | undefined,
+): { media: { name: string; data: Uint8Array }[]; relOf: Map<string, string>; exts: Set<string> } {
+  const media: { name: string; data: Uint8Array }[] = []
+  const relOf = new Map<string, string>()
+  const exts = new Set<string>()
+  if (!bytesOf) return { media, relOf, exts }
+  const used = new Set<string>()
+  for (const entry of entries) {
+    for (const img of entryImagesOf(entry, fields)) {
+      if (used.has(img.storedAs)) continue
+      used.add(img.storedAs)
+      const bytes = bytesOf.get(img.storedAs)
+      if (!bytes) continue
+      const ext = imageExtOf(img.storedAs)
+      if (!DOCX_IMAGE_EXTS.has(ext)) continue
+      const name = `word/media/${img.storedAs.replace(/\\/g, '_')}`
+      media.push({ name, data: bytes })
+      relOf.set(img.storedAs, `rIdImg${relOf.size + 1}`)
+      exts.add(ext)
+    }
+  }
+  return { media, relOf, exts }
+}
+
+/** 把条目导出为 .docx（零依赖：手写 stored ZIP + 最小 OOXML，Word/WPS/Pages 均可打开）；
+ *  传入 bytesOf（storedAs → 图片字节）时，单元格图片作为行内图片嵌进对应字段。 */
+export function exportDocxBytes(
+  library: Library,
+  template: Template,
+  entries: Entry[],
+  selection: ExportSelection,
+  bytesOf?: Map<string, Uint8Array>,
+): Uint8Array {
   const fields = selectedFields(template, selection.fields)
   const enc = new TextEncoder()
+  const { media, relOf, exts } = collectMedia(entries, fields, bytesOf)
+  let docPrId = 1
+
+  const imagesParagraphs = (imgs: EntryImageRef[]): string =>
+    imgs
+      .map((img) => {
+        const rid = relOf.get(img.storedAs)
+        const bytes = rid ? bytesOf?.get(img.storedAs) : null
+        if (!rid || !bytes) return ''
+        const { w, h } = displaySize(bytes)
+        return imageParagraph(rid, docPrId++, w, h)
+      })
+      .join('')
 
   const body: string[] = []
   body.push(paragraph([{ text: library.name, style: 'Title' }]))
@@ -128,16 +212,25 @@ export function exportDocxBytes(library: Library, template: Template, entries: E
     body.push(paragraph([{ text: `${i + 1}. ${entryTitle(entry, template)}`, style: 'Heading1' }]))
     for (const f of fields) {
       const v = entry.values[f.id]
-      if (v === undefined || String(v) === '') continue
-      const value = f.kind === 'date' ? formatDate(String(v)) : String(v)
-      body.push(textParagraphs(`${f.name}：${value}`))
+      const imgs = entryImagesOf(entry, fields).filter((img) => img.fieldId === f.id)
+      if (v !== undefined && String(v) !== '') {
+        const value = f.kind === 'date' ? formatDate(String(v)) : String(v)
+        body.push(textParagraphs(`${f.name}：${value}`))
+      }
+      body.push(imagesParagraphs(imgs))
     }
+    body.push(imagesParagraphs(entryImagesOf(entry, fields).filter((img) => !img.fieldId)))
     body.push(paragraph([{ text: `来源：${entry.sourceRef.fileName} ${entry.sourceRef.locator}`, style: 'Source' }]))
   })
 
   const documentXml =
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
-    `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>` +
+    `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"` +
+    ` xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"` +
+    ` xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"` +
+    ` xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"` +
+    ` xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">` +
+    `<w:body>` +
     body.join('') +
     `<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr>` +
     `</w:body></w:document>`
@@ -161,6 +254,7 @@ export function exportDocxBytes(library: Library, template: Template, entries: E
     `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +
     `<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>` +
     `<Default Extension="xml" ContentType="application/xml"/>` +
+    [...exts].map((ext) => `<Default Extension="${ext}" ContentType="${ext === 'jpg' ? 'image/jpeg' : `image/${ext}`}"/>`).join('') +
     `<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>` +
     `<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>` +
     `</Types>`
@@ -175,6 +269,10 @@ export function exportDocxBytes(library: Library, template: Template, entries: E
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
     `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
     `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>` +
+    [...relOf].map(([storedAs, rid]) => {
+      const name = storedAs.replace(/\\/g, '_')
+      return `<Relationship Id="${rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${name}"/>`
+    }).join('') +
     `</Relationships>`
 
   return zipStore([
@@ -183,5 +281,6 @@ export function exportDocxBytes(library: Library, template: Template, entries: E
     { name: 'word/document.xml', data: enc.encode(documentXml) },
     { name: 'word/_rels/document.xml.rels', data: enc.encode(docRels) },
     { name: 'word/styles.xml', data: enc.encode(stylesXml) },
+    ...media,
   ])
 }

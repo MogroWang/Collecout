@@ -37,8 +37,11 @@ function layoutMenu() {
   const menuH = Math.min(props.options.length * 32 + 12, 288)
   const below = window.innerHeight - r.bottom
   dropUp.value = below < menuH + 12 && r.top > menuH + 12
+  // 菜单渲染后量实际宽度再定位：触发器贴近视口右缘时收紧到右缘内侧，
+  // 避免菜单整体漂到触发器左侧、看起来“位置不对”
+  const w = menu.value?.offsetWidth || r.width
   menuStyle.value = {
-    left: `${Math.min(r.left, window.innerWidth - 232 - 8)}px`,
+    left: `${Math.max(8, Math.min(r.left, window.innerWidth - w - 8))}px`,
     top: dropUp.value ? `${r.top - menuH - 6}px` : `${r.bottom + 6}px`,
     minWidth: `${r.width}px`,
   }

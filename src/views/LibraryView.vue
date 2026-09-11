@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import type { Entry, Template } from '../core/models'
+import { newEntry } from '../core/models'
 import { applyFilters, EMPTY_FILTER, sortEntries, type FilterState, type SortDir } from '../core/query/filter'
 import { isExternalLibrary } from '../core/storage/repo'
 import { useLibrariesStore } from '../stores/libraries'
@@ -33,6 +34,8 @@ const selected = ref(new Set<string>())
 /** 显式多选模式：显示复选框并启用框选 / 滑动选择 */
 const multiSelect = ref(false)
 const openEntryId = ref<string | null>(null)
+/** 手动新建条目：用空白条目打开详情抽屉 */
+const creating = ref(false)
 const showExport = ref(false)
 const showRename = ref(false)
 const showDelete = ref(false)
@@ -62,6 +65,7 @@ watch(
     selected.value = new Set()
     multiSelect.value = false
     openEntryId.value = null
+    creating.value = false
   },
 )
 
@@ -280,7 +284,7 @@ function onTouchEnd() {
 
 /* ---------- 键盘：Ctrl/Cmd+A 全选，Esc 取消 ---------- */
 function onKeydown(e: KeyboardEvent) {
-  if (openEntryId.value || showExport.value || showRename.value || showDelete.value || showLocation.value) return
+  if (openEntryId.value || showExport.value || showRename.value || showDelete.value || showLocation.value || creating.value) return
   const inField = (e.target as HTMLElement).closest?.('input, textarea, select')
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a' && !inField) {
     e.preventDefault()
@@ -311,6 +315,21 @@ function onSort(fieldId: string) {
 }
 
 /* ---------- 条目操作 ---------- */
+const blankEntry = computed<Entry | null>(() =>
+  library.value ? newEntry(library.value.id, { fileName: '手动添加', locator: '' }) : null,
+)
+
+function startAdd() {
+  creating.value = true
+}
+
+function saveNew(entry: Entry) {
+  if (!library.value) return
+  libraries.addEntry(library.value.id, entry.values)
+  ui.toast(t.library.added)
+  creating.value = false
+}
+
 function saveEntry(entry: Entry) {
   if (!library.value) return
   libraries.updateEntry(library.value.id, entry)
@@ -396,6 +415,10 @@ async function pickNewLocation() {
         <button class="icon-btn danger" :aria-label="t.common.delete" @click="showDelete = true">
           <AppIcon name="trash" />
         </button>
+        <button class="btn" @click="startAdd">
+          <AppIcon name="plus" :size="15" />
+          {{ t.library.addEntry }}
+        </button>
         <button class="btn" @click="router.push(`/import?lib=${library.id}`)">
           <AppIcon name="import" :size="15" />
           {{ t.library.importHere }}
@@ -421,60 +444,64 @@ async function pickNewLocation() {
           <button :class="{ on: view === 'cards' }" @click="view = 'cards'">{{ t.library.cards }}</button>
         </div>
 
-        <button class="btn" :class="{ 'filter-on': multiSelect }" :title="t.library.multiSelectHint" @click="toggleMultiSelect">
-          <AppIcon name="check" :size="15" />
-          {{ t.library.multiSelect }}
-        </button>
-
-        <div class="search-wrap">
-          <AppIcon name="search" :size="14" class="search-icon" />
-          <input v-model="filter.search" class="input search-input" type="search" :placeholder="t.common.search" />
-        </div>
-
-        <div class="filter-anchor">
-          <button class="btn" :class="{ 'filter-on': isFiltering }" @click="showFilterPanel = !showFilterPanel">
-            <AppIcon name="filter" :size="15" />
-            {{ t.library.filter }}
-            <span v-if="filter.rules.length > 0" class="chip">{{ filter.rules.length }}</span>
-          </button>
-          <Transition name="pop">
-            <div v-if="showFilterPanel" class="filter-pop card">
-              <FilterPopover
-                :fields="fields"
-                :state="filter"
-                @update:state="(s) => { filter = s; showFilterPanel = false }"
-              />
-            </div>
-          </Transition>
-        </div>
-
-        <div class="filter-anchor">
-          <button class="btn" :class="{ 'filter-on': sort !== null }" @click="showSortPanel = !showSortPanel">
-            <AppIcon name="sort" :size="15" />
-            <template v-if="sort">
-              {{ fields.find((f) => f.id === sort!.fieldId)?.name ?? t.library.sort }}
-              {{ sort.dir === 'asc' ? '↑' : '↓' }}
-            </template>
-            <template v-else>{{ t.library.sort }}</template>
-          </button>
-          <Transition name="pop">
-            <div v-if="showSortPanel" class="filter-pop card">
-              <SortMenu :fields="fields" :sort="sort" @update:sort="(s) => { sort = s; showSortPanel = false }" />
-            </div>
-          </Transition>
-        </div>
-
         <span class="count meta">{{ t.library.entryCount(visibleEntries.length, library.entries.length) }}</span>
-        <template v-if="selected.size > 0">
-          <span class="chip">{{ t.library.selected(selected.size) }}</span>
-          <button class="btn btn-ghost btn-compact" :title="t.library.selectAllHint" @click="clearSelection">
-            {{ t.library.clearSelection }}
-          </button>
-        </template>
 
         <button v-if="isFiltering" class="btn btn-ghost btn-compact" @click="filter = { ...EMPTY_FILTER }; sort = null">
           {{ t.library.clearFilter }}
         </button>
+
+        <!-- 右侧操作区：多选 / 筛选 / 排序成组，搜索框靠右对齐 -->
+        <div class="tb-right">
+          <template v-if="selected.size > 0">
+            <span class="chip">{{ t.library.selected(selected.size) }}</span>
+            <button class="btn btn-ghost btn-compact" :title="t.library.selectAllHint" @click="clearSelection">
+              {{ t.library.clearSelection }}
+            </button>
+          </template>
+
+          <button class="btn" :class="{ 'filter-on': multiSelect }" :title="t.library.multiSelectHint" @click="toggleMultiSelect">
+            <AppIcon name="check" :size="15" />
+            {{ t.library.multiSelect }}
+          </button>
+
+          <div class="filter-anchor">
+            <button class="btn" :class="{ 'filter-on': isFiltering }" @click="showFilterPanel = !showFilterPanel">
+              <AppIcon name="filter" :size="15" />
+              {{ t.library.filter }}
+              <span v-if="filter.rules.length > 0" class="chip">{{ filter.rules.length }}</span>
+            </button>
+            <Transition name="pop">
+              <div v-if="showFilterPanel" class="filter-pop card">
+                <FilterPopover
+                  :fields="fields"
+                  :state="filter"
+                  @update:state="(s) => { filter = s; showFilterPanel = false }"
+                />
+              </div>
+            </Transition>
+          </div>
+
+          <div class="filter-anchor">
+            <button class="btn" :class="{ 'filter-on': sort !== null }" @click="showSortPanel = !showSortPanel">
+              <AppIcon name="sort" :size="15" />
+              <template v-if="sort">
+                {{ fields.find((f) => f.id === sort!.fieldId)?.name ?? t.library.sort }}
+                {{ sort.dir === 'asc' ? '↑' : '↓' }}
+              </template>
+              <template v-else>{{ t.library.sort }}</template>
+            </button>
+            <Transition name="pop">
+              <div v-if="showSortPanel" class="filter-pop card">
+                <SortMenu :fields="fields" :sort="sort" @update:sort="(s) => { sort = s; showSortPanel = false }" />
+              </div>
+            </Transition>
+          </div>
+
+          <div class="search-wrap">
+            <AppIcon name="search" :size="14" class="search-icon" />
+            <input v-model="filter.search" class="input search-input" type="search" :placeholder="t.common.search" />
+          </div>
+        </div>
       </div>
 
       <EmptyState v-if="visibleEntries.length === 0" icon="filter" :title="t.library.noMatch">
@@ -527,6 +554,17 @@ async function pickNewLocation() {
       @close="openEntryId = null"
       @save="saveEntry"
       @delete="deleteEntry"
+    />
+
+    <!-- 手动新建条目：复用详情抽屉，保存后入库 -->
+    <EntryDrawer
+      v-if="creating && blankEntry"
+      creating
+      :library="library"
+      :template="template"
+      :entry="blankEntry"
+      @close="creating = false"
+      @save="saveNew"
     />
 
     <ExportDialog
@@ -712,8 +750,17 @@ async function pickNewLocation() {
 }
 
 .count {
-  margin-left: auto;
   font-variant-numeric: tabular-nums;
+}
+
+/* 右侧操作区：三个功能按钮成组，搜索框收在最后靠右 */
+.tb-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .btn-compact {

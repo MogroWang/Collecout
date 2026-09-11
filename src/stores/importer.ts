@@ -145,12 +145,8 @@ export const useImporterStore = defineStore('importer', {
           rx.tables = rx.doc.blocks
             .filter((b): b is Extract<ParsedDoc['blocks'][number], { type: 'table' }> => b.type === 'table')
             .map((b) => ({ label: b.source ?? rx.doc!.fileName, header: b.header, rows: b.rows, rowMap: b.rowMap }))
-          // 默认聚焦行数最多的工作表
-          let best = 0
-          for (let i = 0; i < rx.tables.length; i++) {
-            if (rx.tables[i].rows.length > rx.tables[best].rows.length) best = i
-          }
-          rx.activeTable = best
+          // 默认选定首个工作表（与用户在 Excel 里看到的顺序一致），不按行数挑选
+          rx.activeTable = 0
           // 可解析的文件里一个内容块都没有才提示错误；附件文件（kind=file）不算错误
           if (rx.doc.kind !== 'file' && rx.doc.blocks.length === 0) {
             rx.error = `「${ref.name}」里没有可识别的内容`
@@ -205,15 +201,29 @@ export const useImporterStore = defineStore('importer', {
       if (!f.doc || f.doc.kind === 'file') return
 
       if (this.templateId === AUTO_ID) {
-        // 未主动选工作表时保持旧行为：按整篇文档判断模式，表格取行数最多的那张
+        // xlsx 的表即工作表：始终按当前选中的表（默认首个）推断；
+        // docx / 文本未主动选表时保持旧行为，由引擎按整篇文档判断模式并自动选表
+        const explicit = f.sheetChosen || f.doc.kind === 'xlsx'
         const inferred = inferTemplate(f.doc, AUTO_ID, {
-          tableIndex: f.sheetChosen ? f.activeTable : undefined,
+          tableIndex: explicit ? f.activeTable : undefined,
           layout: f.layout,
         })
         f.inferred = inferred.template
         f.mode = inferred.mode
         f.resolvedLayout = inferred.resolvedLayout ?? null
         if (inferred.mode === 'table' && inferred.table) {
+          // 自动选表（docx 多表等）时把实际采用的表同步回选择器，保持展示与提取一致
+          if (!explicit && inferred.tableIndex !== undefined) {
+            let seen = -1
+            for (let i = 0; i < f.doc.blocks.length; i++) {
+              if (f.doc.blocks[i].type !== 'table') continue
+              seen++
+              if (i === inferred.tableIndex) {
+                f.activeTable = seen
+                break
+              }
+            }
+          }
           const candidate = f.tables[f.activeTable]
           f.tableHeader = inferred.table.header
           f.tableRows = inferred.table.rows

@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useSettingsStore } from '../stores/settings'
 import { useLibrariesStore } from '../stores/libraries'
 import { useTemplatesStore } from '../stores/templates'
+import { useUiStore } from '../stores/ui'
 import { repo } from '../core/storage/repo'
 import { t } from '../locales/strings'
 import { isDesktop, platform } from '../lib/platform'
@@ -14,6 +15,7 @@ import AppSelect from '../components/AppSelect.vue'
 const settings = useSettingsStore()
 const libraries = useLibrariesStore()
 const templates = useTemplatesStore()
+const ui = useUiStore()
 const router = useRouter()
 
 const dataPath = ref('')
@@ -40,6 +42,8 @@ const formatOptions = [
   { id: 'text', label: t.exportDialog.fmtText },
   { id: 'csv', label: 'CSV' },
   { id: 'json', label: 'JSON' },
+  { id: 'xlsx', label: t.exportDialog.fmtXlsx },
+  { id: 'docx', label: t.exportDialog.fmtDocx },
 ] as const
 
 async function setTheme(id: 'system' | 'light' | 'dark') {
@@ -47,8 +51,13 @@ async function setTheme(id: 'system' | 'light' | 'dark') {
 }
 
 async function openDataFolder() {
-  const { revealInFinder } = await import('../lib/desktop')
-  await revealInFinder(dataPath.value, true)
+  try {
+    const { revealInFinder } = await import('../lib/desktop')
+    await revealInFinder(dataPath.value, true)
+  } catch {
+    // 常见于数据文件夹被移动/删除，或系统拒绝打开
+    ui.toast(t.settings.openFailed, 'danger')
+  }
 }
 
 function beginChange() {

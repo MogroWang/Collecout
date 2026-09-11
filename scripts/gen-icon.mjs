@@ -392,8 +392,51 @@ function render(polys166, size, opts) {
 }
 
 // ---------- ICO / ICNS ----------
+/** 单帧 32bpp BMP（BITMAPINFOHEADER + 自底向上的 BGRA 像素 + AND 掩码）。
+ *  Windows 资源管理器对 ICO 内的 PNG 压缩仅可靠支持 256px 一档，
+ *  小尺寸若只放 PNG，部分 shell 组件（列表视图、任务栏小图标）会拿不到
+ *  合适分辨率而放大低清版本——这是「图标发虚」的根源。 */
+function encodeIcoBmp(rgba, size) {
+  const rowMask = Math.ceil(size / 32) * 4 // AND 掩码每行按 32 位对齐
+  const xorSize = size * size * 4
+  const andSize = rowMask * size
+  const buf = Buffer.alloc(40 + xorSize + andSize)
+  const v = buf.buffer
+
+  // BITMAPINFOHEADER：高度双倍（XOR + AND 两块）
+  buf.writeUInt32LE(40, 0)
+  buf.writeInt32LE(size, 4)
+  buf.writeInt32LE(size * 2, 8)
+  buf.writeUInt16LE(1, 12)
+  buf.writeUInt16LE(32, 14)
+  buf.writeUInt32LE(xorSize + andSize, 20)
+
+  // XOR：BGRA，自底向上
+  for (let y = 0; y < size; y++) {
+    const srcRow = (size - 1 - y) * size * 4
+    let dst = 40 + y * size * 4
+    for (let x = 0; x < size; x++) {
+      const s = srcRow + x * 4
+      buf[dst++] = rgba[s + 2]
+      buf[dst++] = rgba[s + 1]
+      buf[dst++] = rgba[s]
+      buf[dst++] = rgba[s + 3]
+    }
+  }
+
+  // AND 掩码：alpha = 0 的像素置 1（透明）
+  for (let y = 0; y < size; y++) {
+    const srcRow = (size - 1 - y) * size * 4
+    const maskRow = 40 + xorSize + y * rowMask
+    for (let x = 0; x < size; x++) {
+      if (rgba[srcRow + x * 4 + 3] === 0) buf[maskRow + (x >> 3)] |= 0x80 >> (x & 7)
+    }
+  }
+  return buf
+}
+
 function encodeIco(images) {
-  // images: [{ size, png }]
+  // images: [{ size, data }]，data 为 BMP（小尺寸）或 PNG（256）
   const header = Buffer.alloc(6)
   header.writeUInt16LE(0, 0)
   header.writeUInt16LE(1, 2)
@@ -406,12 +449,12 @@ function encodeIco(images) {
     e[1] = img.size >= 256 ? 0 : img.size
     e.writeUInt16LE(1, 4)
     e.writeUInt16LE(32, 6)
-    e.writeUInt32LE(img.png.length, 8)
+    e.writeUInt32LE(img.data.length, 8)
     e.writeUInt32LE(offset, 12)
     entries.push(e)
-    offset += img.png.length
+    offset += img.data.length
   }
-  return Buffer.concat([header, ...entries, ...images.map((i) => i.png)])
+  return Buffer.concat([header, ...entries, ...images.map((i) => i.data)])
 }
 
 function encodeIcns(images) {
@@ -437,8 +480,9 @@ console.log(`logo 解析：${polys166.length} 条路径，bbox ${bb.w.toFixed(1)
 
 const png = (rgba, s) => encodePng(rgba, s, s)
 
-/** Windows / Linux 通用样式：满幅白底圆角 + 居中 logo */
-const winStyle = (s, radius = 0.2, logoRatio = 0.64) => png(render(polys166, s, { boardRatio: 1, boardRadius: radius, logoRatio }), s)
+/** Windows / Linux 通用样式：满幅白底圆角 + 居中 logo（返回 RGBA，便于 ICO 直接编码 BMP） */
+const winRgba = (s, radius = 0.2, logoRatio = 0.64) => render(polys166, s, { boardRatio: 1, boardRadius: radius, logoRatio })
+const winStyle = (s, radius = 0.2, logoRatio = 0.64) => png(winRgba(s, radius, logoRatio), s)
 /** macOS 传统规格：824/1024 白底圆角板 + logo，系统会为 macOS 26 自动遮罩适配 */
 const macStyle = (s) => png(render(polys166, s, { boardRatio: 0.805, boardRadius: 0.225, logoRatio: 0.52 }), s)
 /** Android 自适应前景：透明底，logo 落在中心 62% 安全区内 */
@@ -474,10 +518,14 @@ for (const [s, name] of [
   [50, 'StoreLogo.png'],
 ]) emit(name, winStyle(s, 0.12))
 
-// Windows ico（白底圆角）
+// Windows ico：16–128 用 BMP（shell 对小尺寸 PNG 兼容差），256 用 PNG；
+// 补齐 20/40/96 等 DPI 缩放（125%/150%）常用档位，避免取近放大而发虚
 emit(
   'icon.ico',
-  encodeIco([16, 24, 32, 48, 64, 128, 256].map((s) => ({ size: s, png: winStyle(s) }))),
+  encodeIco([
+    ...[16, 20, 24, 32, 40, 48, 64, 96, 128].map((s) => ({ size: s, data: encodeIcoBmp(winRgba(s), s) })),
+    { size: 256, data: winStyle(256) },
+  ]),
 )
 
 // macOS icns（传统规格，macOS 26+ 自动适配新样式）

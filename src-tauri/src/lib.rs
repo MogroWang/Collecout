@@ -20,6 +20,8 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        // 记住窗口上次关闭时的位置与大小，下次启动自动恢复
+        .plugin(tauri_plugin_window_state::Builder::default().build())
         .invoke_handler(tauri::generate_handler![extend_fs_scope])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

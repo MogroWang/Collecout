@@ -9,6 +9,7 @@ import { useLibrariesStore, type AppendPlan, type ConflictDecision } from '../st
 import { useTemplatesStore } from '../stores/templates'
 import { useUiStore } from '../stores/ui'
 import { repo } from '../core/storage/repo'
+import { imageBlobOf } from '../core/image'
 import { t } from '../locales/strings'
 import { isDesktop } from '../lib/platform'
 import { extendFsScope } from '../lib/desktop'
@@ -77,6 +78,69 @@ const strayImages = computed(() => {
   if (strays.length === 0) return null
   const sheets = [...new Set(strays.map((i) => i.sheet))].join('、')
   return t.import.imagesInOtherSheet(strays.length, sheets)
+})
+
+/* ---------- 步骤 4 预览：单元格图片缩略图 ---------- */
+const previewUrls = ref<Record<string, string>>({})
+const previewImg = ref<string | null>(null)
+
+watch(
+  () => activeFile.value?.images.map((i) => i.name).join(','),
+  async () => {
+    const f = activeFile.value
+    if (!f) return
+    for (const img of f.images) {
+      if (previewUrls.value[img.name]) continue
+      const blob = imageBlobOf(img.name, img.bytes)
+      if (blob) previewUrls.value = { ...previewUrls.value, [img.name]: URL.createObjectURL(blob) }
+    }
+  },
+  { immediate: true },
+)
+
+/** 预览表里每条草稿（下标）对应的图片：字段级跟随映射列，其余归入条目级「图片」列 */
+const draftImageMap = computed<Map<number, { fieldId?: string; name: string }[]>>(() => {
+  const map = new Map<number, { fieldId?: string; name: string }[]>()
+  const f = activeFile.value
+  if (!f?.doc || f.doc.kind !== 'xlsx' || f.images.length === 0) return map
+  const isCol = f.resolvedLayout === 'headerLeft'
+  const fieldByCol = new Map<number, string>()
+  if (!isCol) {
+    for (const [fid, col] of Object.entries(f.mapping)) {
+      if (col >= 0) fieldByCol.set(col, fid)
+    }
+  }
+  for (const img of f.images) {
+    if (img.sheet !== f.tableLabel) continue
+    const di = f.drafts.findIndex((d) => (isCol ? d.sourceCol === img.col : d.sourceRow === img.row))
+    if (di === -1) continue
+    const item = { fieldId: isCol ? undefined : fieldByCol.get(img.col), name: img.name }
+    const list = map.get(di) ?? []
+    list.push(item)
+    map.set(di, list)
+  }
+  return map
+})
+
+function imagesOfDraft(draftIndex: number, fieldId: string): { name: string; url: string }[] {
+  return (draftImageMap.value.get(draftIndex) ?? [])
+    .filter((img) => img.fieldId === fieldId)
+    .map((img) => ({ name: img.name, url: previewUrls.value[img.name] }))
+    .filter((img) => img.url !== undefined)
+}
+
+const entryLevelImages = computed(() => {
+  const f = activeFile.value
+  if (!f) return new Map<number, { name: string; url: string }[]>()
+  const out = new Map<number, { name: string; url: string }[]>()
+  for (const [di, list] of draftImageMap.value) {
+    const urls = list
+      .filter((img) => !img.fieldId)
+      .map((img) => ({ name: img.name, url: previewUrls.value[img.name] }))
+      .filter((img) => img.url !== undefined)
+    if (urls.length > 0) out.set(di, urls)
+  }
+  return out
 })
 
 function kindLabel(kind: SourceKind): string {
@@ -324,14 +388,13 @@ async function finish() {
         <AppIcon name="arrow-left" />
       </button>
       <h1 class="large-title">{{ t.import.title }}</h1>
+      <ol class="steps">
+        <li v-for="(label, i) in t.import.steps" :key="label" :class="{ on: step === i + 1, done: step > i + 1 }">
+          <span class="dot">{{ step > i + 1 ? '✓' : i + 1 }}</span>
+          {{ label }}
+        </li>
+      </ol>
     </header>
-
-    <ol class="steps">
-      <li v-for="(label, i) in t.import.steps" :key="label" :class="{ on: step === i + 1, done: step > i + 1 }">
-        <span class="dot">{{ step > i + 1 ? '✓' : i + 1 }}</span>
-        {{ label }}
-      </li>
-    </ol>
 
     <!-- 步骤 1：选择文件 -->
     <section v-if="step === 1" class="step-body">
@@ -352,21 +415,27 @@ async function finish() {
         <input ref="fileInput" type="file" multiple hidden @change="onFilesChosen(Array.from(($event.target as HTMLInputElement)?.files ?? []).map((f) => ({ name: f.name, file: f })))" />
       </div>
 
-      <ul v-if="importer.files.length > 0" class="file-list">
-        <li v-for="f in importer.files" :key="f.id" class="card file-item">
-          <AppIcon :name="f.doc ? kindIcon(f.doc.kind) : 'doc'" :size="17" />
-          <div class="file-info">
-            <span class="file-name">{{ f.name }}</span>
-            <span v-if="f.error" class="meta error">{{ f.error }}</span>
-            <span v-else-if="f.doc?.kind === 'file'" class="meta">{{ t.import.kindFile }} · {{ t.import.fileAttachNote }}</span>
-            <span v-else-if="f.doc" class="meta">{{ kindLabel(f.doc.kind) }} · {{ f.doc.blocks.length }} 个内容块</span>
-            <span v-else class="meta">解析中…</span>
-          </div>
-          <button class="icon-btn danger" :aria-label="t.import.removeFile" @click="importer.removeFile(f.id)">
-            <AppIcon name="x" />
-          </button>
-        </li>
-      </ul>
+      <div v-if="importer.files.length > 0" class="file-block">
+        <div class="file-head">
+          <h2 class="file-title">{{ t.import.fileListTitle }}</h2>
+          <span class="meta">{{ t.import.fileCount(importer.files.length) }}</span>
+        </div>
+        <ul class="file-list">
+          <li v-for="f in importer.files" :key="f.id" class="card file-item">
+            <AppIcon class="file-icon" :name="f.doc ? kindIcon(f.doc.kind) : 'doc'" :size="17" />
+            <div class="file-info">
+              <span class="file-name">{{ f.name }}</span>
+              <span v-if="f.error" class="meta error">{{ f.error }}</span>
+              <span v-else-if="f.doc?.kind === 'file'" class="meta">{{ t.import.kindFile }} · {{ t.import.fileAttachNote }}</span>
+              <span v-else-if="f.doc" class="meta">{{ kindLabel(f.doc.kind) }} · {{ f.doc.blocks.length }} 个内容块</span>
+              <span v-else class="meta">解析中…</span>
+            </div>
+            <button class="icon-btn danger file-remove" :aria-label="t.import.removeFile" @click="importer.removeFile(f.id)">
+              <AppIcon name="x" />
+            </button>
+          </li>
+        </ul>
+      </div>
     </section>
 
     <!-- 步骤 2：识别结果 -->
@@ -497,6 +566,7 @@ async function finish() {
               <tr>
                 <th class="conf-col"></th>
                 <th v-for="field in activeFile.inferred?.fields ?? []" :key="field.id">{{ field.name }}</th>
+                <th v-if="entryLevelImages.size > 0" class="img-col">图片</th>
               </tr>
             </thead>
             <tbody>
@@ -513,6 +583,30 @@ async function finish() {
                     type="text"
                   />
                   <span v-else class="cell-truncate">{{ draft.values[field.id] ?? '' }}</span>
+                  <div v-if="imagesOfDraft(di, field.id).length > 0" class="cell-thumbs">
+                    <button
+                      v-for="img in imagesOfDraft(di, field.id)"
+                      :key="img.name"
+                      type="button"
+                      class="cell-thumb"
+                      @click="previewImg = img.url"
+                    >
+                      <img :src="img.url" alt="" loading="lazy" />
+                    </button>
+                  </div>
+                </td>
+                <td v-if="entryLevelImages.size > 0" class="img-col">
+                  <div v-if="entryLevelImages.get(di)?.length" class="cell-thumbs">
+                    <button
+                      v-for="img in entryLevelImages.get(di)"
+                      :key="img.name"
+                      type="button"
+                      class="cell-thumb"
+                      @click="previewImg = img.url"
+                    >
+                      <img :src="img.url" alt="" loading="lazy" />
+                    </button>
+                  </div>
                 </td>
               </tr>
             </tbody>
@@ -628,13 +722,24 @@ async function finish() {
     </section>
 
     <footer class="wizard-foot">
-      <button class="btn" :disabled="step === 1" @click="prev">{{ t.common.back }}</button>
-      <button v-if="step < 5" class="btn btn-primary" :disabled="!canNext" @click="next">{{ t.common.next }}</button>
-      <button v-else class="btn btn-primary" :disabled="!canNext || busy" @click="finish">
-        <AppIcon name="check" :size="15" />
-        {{ t.import.finish }}
-      </button>
+      <div class="foot-pill">
+        <button v-if="step > 1" class="btn" @click="prev">{{ t.common.back }}</button>
+        <button v-if="step < 5" class="btn btn-primary" :disabled="!canNext" @click="next">{{ t.common.next }}</button>
+        <button v-else class="btn btn-primary" :disabled="!canNext || busy" @click="finish">
+          <AppIcon name="check" :size="15" />
+          {{ t.import.finish }}
+        </button>
+      </div>
     </footer>
+
+    <!-- 预览图片放大 -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div v-if="previewImg" class="img-lightbox" role="button" @click="previewImg = null">
+          <img :src="previewImg" alt="" />
+        </div>
+      </Transition>
+    </Teleport>
 
     <!-- 冲突条目编辑 -->
     <AppModal v-if="editing" @close="editing = null">
@@ -662,11 +767,11 @@ async function finish() {
 
 <style scoped>
 .page {
-  padding: 28px 32px 48px;
+  padding: 28px 32px 20px;
   max-width: 1080px;
   display: flex;
   flex-direction: column;
-  min-height: calc(100% - 0px);
+  min-height: 100%;
 }
 
 .page-head {
@@ -676,13 +781,15 @@ async function finish() {
   margin-bottom: 16px;
 }
 
+/* 步骤指示：跟随在「导入」标题后，靠右对齐 */
 .steps {
   display: flex;
   gap: 4px;
   list-style: none;
-  margin: 0 0 20px;
+  margin: 0 0 0 auto;
   padding: 0;
   flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .steps li {
@@ -754,11 +861,29 @@ async function finish() {
   color: var(--ink);
 }
 
-.file-list,
-.rec-card {
+.file-block {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.file-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 0 2px;
+}
+
+.file-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.file-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
 }
 
 .file-item {
@@ -766,6 +891,15 @@ async function finish() {
   align-items: center;
   gap: 10px;
   padding: 10px 14px;
+}
+
+.file-icon {
+  flex: none;
+  color: var(--ink-2);
+}
+
+.file-remove {
+  flex: none;
 }
 
 .file-info {
@@ -784,6 +918,9 @@ async function finish() {
 }
 
 .rec-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   padding: 12px 16px;
 }
 
@@ -931,12 +1068,65 @@ async function finish() {
   padding: 8px 12px;
 }
 
+/* 预览表里的单元格图片缩略图 */
+.img-col {
+  width: 72px;
+}
+
+.cell-thumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.cell-thumb {
+  display: inline-flex;
+  width: 44px;
+  height: 34px;
+  padding: 0;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+  background: var(--surface-2);
+}
+
+.cell-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 150ms var(--ease-sheet);
+}
+
+.cell-thumb:hover img {
+  transform: scale(1.08);
+}
+
+.img-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: var(--scrim);
+  display: grid;
+  place-items: center;
+  padding: 32px;
+  cursor: zoom-out;
+}
+
+.img-lightbox img {
+  max-width: min(920px, 92vw);
+  max-height: 88vh;
+  border-radius: var(--r-m);
+  box-shadow: var(--shadow-2);
+  background: #fff;
+}
+
 .target-card {
   padding: 16px 18px;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  max-width: 520px;
 }
 
 .target-row {
@@ -1107,11 +1297,38 @@ async function finish() {
   margin-bottom: 12px;
 }
 
+/* 底部导航：固定悬浮于页面底部居中，药丸材质 */
 .wizard-foot {
+  position: sticky;
+  bottom: 0;
+  z-index: 6;
   display: flex;
-  justify-content: flex-end;
+  justify-content: center;
+  margin-top: auto;
+  padding: 14px 0 6px;
+  pointer-events: none;
+}
+
+.foot-pill {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
   gap: 8px;
-  margin-top: 24px;
+  padding: 7px 9px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid var(--hairline);
+  box-shadow: var(--shadow-1);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .foot-pill {
+    background: var(--surface);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
 }
 
 @media (max-width: 860px) {
