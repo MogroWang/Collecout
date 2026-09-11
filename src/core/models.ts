@@ -102,14 +102,22 @@ export type ExportFormat = 'markdown' | 'text' | 'csv' | 'json' | 'folder' | 'do
 
 export type ThemeMode = 'system' | 'light' | 'dark'
 
+/**
+ * 界面字体：FONT_PRESETS 里的预设 id（'system' 跟随系统），或任意 CSS font-family 值（自定义）。
+ * 预设表在 stores/settings.ts 中（应用与设置页共用）。
+ */
+export type FontSetting = string
+
 export interface Settings {
   theme: ThemeMode
   defaultExportFormat: ExportFormat
+  fontFamily: FontSetting
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   theme: 'system',
   defaultExportFormat: 'markdown',
+  fontFamily: 'system',
 }
 
 /** crypto.randomUUID 仅在安全上下文可用，兜底保证任何环境都能生成 id */

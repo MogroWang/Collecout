@@ -524,29 +524,32 @@ async function pickNewLocation() {
         @touchend="onTouchEnd"
         @touchcancel="onTouchEnd"
       >
-        <DataTable
-          v-if="view === 'table'"
-          :fields="fields"
-          :entries="visibleEntries"
-          :selected="effectiveSelected"
-          :sort="sort"
-          :multi-select="multiSelect"
-          :image-urls="imageUrls"
-          @select="selectWithModifiers"
-          @toggle-all="toggleAll"
-          @sort="onSort"
-          @open="(id) => (openEntryId = id)"
-        />
-        <CardGrid
-          v-else
-          :fields="fields"
-          :entries="visibleEntries"
-          :selected="effectiveSelected"
-          :multi-select="multiSelect"
-          :image-urls="imageUrls"
-          @select="selectWithModifiers"
-          @open="(id) => (openEntryId = id)"
-        />
+        <!-- 表格 / 卡片切换：快速交叉淡入 -->
+        <Transition name="fade" mode="out-in">
+          <DataTable
+            v-if="view === 'table'"
+            :fields="fields"
+            :entries="visibleEntries"
+            :selected="effectiveSelected"
+            :sort="sort"
+            :multi-select="multiSelect"
+            :image-urls="imageUrls"
+            @select="selectWithModifiers"
+            @toggle-all="toggleAll"
+            @sort="onSort"
+            @open="(id) => (openEntryId = id)"
+          />
+          <CardGrid
+            v-else
+            :fields="fields"
+            :entries="visibleEntries"
+            :selected="effectiveSelected"
+            :multi-select="multiSelect"
+            :image-urls="imageUrls"
+            @select="selectWithModifiers"
+            @open="(id) => (openEntryId = id)"
+          />
+        </Transition>
       </div>
     </template>
 

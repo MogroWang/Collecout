@@ -93,14 +93,16 @@ async function createLibrary() {
       </div>
     </header>
 
-    <EmptyState
-      v-if="sorted.length === 0"
-      icon="library"
-      :title="t.home.emptyTitle"
-      :desc="t.home.emptyDesc"
-    />
+    <!-- 空状态 ↔ 库卡片网格：快速淡入 -->
+    <Transition name="fade" mode="out-in">
+      <EmptyState
+        v-if="sorted.length === 0"
+        icon="library"
+        :title="t.home.emptyTitle"
+        :desc="t.home.emptyDesc"
+      />
 
-    <div v-else class="lib-grid">
+      <div v-else class="lib-grid">
       <article
         v-for="lib in sorted"
         :key="lib.id"
@@ -118,6 +120,7 @@ async function createLibrary() {
         <p class="hint">{{ t.home.updated }} {{ fmtDate(lib.updatedAt) }}</p>
       </article>
     </div>
+    </Transition>
 
     <AppModal v-if="showNew" @close="showNew = false">
       <header class="modal-head">

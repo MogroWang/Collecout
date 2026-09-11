@@ -14,25 +14,42 @@ const settings = useSettingsStore()
 const libraries = useLibrariesStore()
 const templates = useTemplatesStore()
 
-const mode = ref<'default' | 'custom'>('default')
+const mode = ref<'default' | 'existing' | 'custom'>('default')
 const defaultPath = ref('')
 const customPath = ref('')
+/** 探测到的现有数据文件夹（绝对路径）；非空时显示「读取现有数据」卡片 */
+const existingRoots = ref<string[]>([])
+const existingPath = ref('')
 const picking = ref(false)
 const starting = ref(false)
 const error = ref('')
 
 onMounted(async () => {
   defaultPath.value = await repo().describeDefaultRoot()
+  existingRoots.value = (await repo().adapter.probeExistingRoots?.()) ?? []
+  if (existingRoots.value.length > 0) existingPath.value = existingRoots.value[0]
 })
 
 /** 自定义位置校验通过后才允许开始 */
 const customReady = computed(() => customPath.value !== '' && error.value === '')
 
+/** 自定义选中的文件夹是否含现有数据（chip 提示「将读取其中的现有数据」） */
+const customHasData = ref(false)
+
 const canStart = computed(() => {
   if (starting.value || picking.value) return false
   if (mode.value === 'default') return true
+  if (mode.value === 'existing') return existingPath.value !== ''
   return customReady.value
 })
+
+/** 选中某个探测到的现有数据文件夹 */
+function chooseExisting(path: string) {
+  if (starting.value) return
+  mode.value = 'existing'
+  existingPath.value = path
+  error.value = ''
+}
 
 function pickCustom() {
   if (picking.value) return
@@ -42,19 +59,28 @@ function pickCustom() {
     try {
       const dir = await pickDirectory()
       if (!dir) return
-      // 自定义数据位置要求空文件夹：避免与既有内容混放
+      // 非空文件夹：若是萃序数据文件夹（换电脑接回备份、旧版本数据等）则允许直接读取
       const entries = await repo().adapter.listDirAbs?.(dir)
       if (entries && entries.length > 0) {
+        if (await repo().adapter.looksLikeDataDir?.(dir)) {
+          customPath.value = dir
+          customHasData.value = true
+          mode.value = 'custom'
+          return
+        }
         error.value = t.oobe.notEmpty
         customPath.value = ''
+        customHasData.value = false
         return
       }
       if (!(await repo().canWriteAbs(dir))) {
         error.value = t.oobe.notWritable
         customPath.value = ''
+        customHasData.value = false
         return
       }
       customPath.value = dir
+      customHasData.value = false
       mode.value = 'custom'
     } finally {
       picking.value = false
@@ -75,8 +101,9 @@ function chooseMode(next: 'default' | 'custom') {
 async function start() {
   starting.value = true
   error.value = ''
+  const target = mode.value === 'default' ? null : mode.value === 'existing' ? existingPath.value : customPath.value
   try {
-    await repo().setDataRoot(mode.value === 'custom' ? customPath.value : null)
+    await repo().setDataRoot(target)
     await Promise.all([settings.load(), libraries.load(), templates.load()])
     await router.replace('/')
   } catch (err) {
@@ -107,6 +134,19 @@ async function start() {
         <span class="loc-path meta">{{ defaultPath }}</span>
       </button>
 
+      <!-- 检测到旧版本 / 兜底位置的现有数据时出现：选中即原样读取 -->
+      <div v-if="existingRoots.length > 0" class="loc-card card" :class="{ on: mode === 'existing' }">
+        <span class="loc-head">
+          <AppIcon name="import" :size="16" />
+          <strong>{{ t.oobe.existingOption }}</strong>
+        </span>
+        <span class="hint">{{ t.oobe.existingOptionDesc }}</span>
+        <label v-for="p in existingRoots" :key="p" class="existing-row">
+          <input type="radio" name="existing-root" :value="p" :checked="mode === 'existing' && existingPath === p" @change="chooseExisting(p)" />
+          <span class="loc-path meta">{{ p }}</span>
+        </label>
+      </div>
+
       <button
         class="loc-card card clickable"
         :class="{ on: mode === 'custom' }"
@@ -116,7 +156,7 @@ async function start() {
         <span class="loc-head">
           <AppIcon name="library" :size="16" />
           <strong>{{ t.oobe.customOption }}</strong>
-          <span v-if="customReady" class="chip loc-chip">{{ t.oobe.customPicked }}</span>
+          <span v-if="customReady" class="chip loc-chip">{{ customHasData ? t.oobe.customHasData : t.oobe.customPicked }}</span>
         </span>
         <span v-if="customPath" class="loc-path meta">{{ customPath }}</span>
         <span v-else class="hint">{{ t.oobe.customHint }}</span>
@@ -215,6 +255,28 @@ async function start() {
   font-family: ui-monospace, 'SF Mono', Menlo, monospace;
   font-size: 11.5px;
   word-break: break-all;
+}
+
+/* 现有数据候选：单选行 */
+.existing-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 8px;
+  margin: 0 -8px;
+  border-radius: var(--r-s);
+  cursor: pointer;
+  transition: background 150ms ease;
+}
+
+.existing-row:hover {
+  background: var(--surface-2);
+}
+
+.existing-row input {
+  margin: 2px 0 0;
+  accent-color: var(--accent);
 }
 
 .pick-inline {

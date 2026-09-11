@@ -38,6 +38,42 @@ const themeOptions = [
   { id: 'dark', label: t.settings.themeDark },
 ] as const
 
+/* ---------- 界面字体 ---------- */
+const FONT_PRESET_IDS = ['system', 'serif', 'kai', 'mono'] as const
+
+const fontOptions = [
+  { value: 'system', label: t.settings.fontSystem },
+  { value: 'serif', label: t.settings.fontSerif },
+  { value: 'kai', label: t.settings.fontKai },
+  { value: 'mono', label: t.settings.fontMono },
+  { value: 'custom', label: t.settings.fontCustom },
+]
+
+/** 下拉当前值：fontFamily 是预设 id 则原样，否则视为自定义 */
+const fontSelection = computed(() =>
+  (FONT_PRESET_IDS as readonly string[]).includes(settings.settings.fontFamily) ? settings.settings.fontFamily : 'custom',
+)
+
+/** 自定义输入框的草稿：仅在从预设切到「自定义」时为空，之后与设置值双向同步 */
+const customFontDraft = ref(
+  (FONT_PRESET_IDS as readonly string[]).includes(settings.settings.fontFamily) ? '' : settings.settings.fontFamily,
+)
+
+function onFontPreset(value: string) {
+  if (value === 'custom') {
+    // 从预设切到自定义：沿用当前自定义值（可能为空，输入后生效）
+    void settings.set({ fontFamily: customFontDraft.value.trim() || 'system' })
+    return
+  }
+  customFontDraft.value = ''
+  void settings.set({ fontFamily: value })
+}
+
+function onCustomFontInput() {
+  const v = customFontDraft.value.trim()
+  void settings.set({ fontFamily: v || 'system' })
+}
+
 const formatOptions = [
   { id: 'markdown', label: 'Markdown' },
   { id: 'text', label: t.exportDialog.fmtText },
@@ -123,6 +159,23 @@ async function applyNewRoot(dir: string | null) {
           </button>
         </div>
       </div>
+      <div class="row font-row">
+        <span>{{ t.settings.font }}</span>
+        <AppSelect
+          :model-value="fontSelection"
+          :options="fontOptions"
+          @update:model-value="onFontPreset($event as string)"
+        />
+        <input
+          v-if="fontSelection === 'custom'"
+          v-model="customFontDraft"
+          class="input font-input"
+          type="text"
+          :placeholder="t.settings.fontCustomPlaceholder"
+          @change="onCustomFontInput"
+        />
+      </div>
+      <p class="hint row-note font-preview">{{ t.settings.fontPreview }}</p>
     </section>
 
     <section class="group">
@@ -257,6 +310,16 @@ async function applyNewRoot(dir: string | null) {
 
 .sw-dark {
   background: #1b1b1d;
+}
+
+.font-input {
+  width: 220px;
+}
+
+/* 预览文本继承全局 --font（随上方选择即时更新） */
+.font-preview {
+  font-size: 15px;
+  color: var(--ink);
 }
 
 .path {

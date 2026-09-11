@@ -31,6 +31,13 @@ export interface StorageAdapter {
    * 指针文件保存在默认数据文件夹内，下次启动自动跟随。
    */
   setDataRoot?(path: string | null): Promise<void>
+  /**
+   * 探测常见位置的现有数据文件夹（OOBE「读取现有数据」用），
+   * 返回绝对路径列表（不含默认数据位置——那里有数据时根本不会进 OOBE）。
+   */
+  probeExistingRoots?(): Promise<string[]>
+  /** 某个绝对路径目录是否像一个萃序数据文件夹（OOBE 校验用） */
+  looksLikeDataDir?(abs: string): Promise<boolean>
 
   /* ---------- 0.4.0 库文件夹结构（内部库三平台尽量实现，跨位置能力仅桌面端） ---------- */
 

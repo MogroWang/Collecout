@@ -31,6 +31,14 @@ function baseDirOf(fs: FsPlugin, base: BaseDir): (typeof fs.BaseDirectory)[keyof
   }
 }
 
+/** 某个 base 目录的可读绝对路径（展示 / 探测用） */
+async function describeBaseDir(base: BaseDir): Promise<string> {
+  const path = await import('@tauri-apps/api/path')
+  const dir =
+    base === 'exe' ? await path.executableDir() : base === 'home' ? await path.homeDir() : await path.appDataDir()
+  return dir.replace(/[\\/]+$/, '')
+}
+
 /**
  * 默认数据根目录：跟随软件本目录（exe 所在文件夹，绿色便携，数据跟着程序走）。
  * - macOS 的 exe 在 .app 包内，写入会破坏签名，探测失败后落回家目录；
@@ -41,17 +49,60 @@ async function resolveDefaultRoot(fs: FsPlugin): Promise<BaseDir> {
   const os = osName()
   const order: BaseDir[] = os === 'windows' ? ['exe', 'appdata'] : ['exe', 'home', 'appdata']
   for (const base of order) {
+    const bd = baseDirOf(fs, base)
+    // 探测前记录目录是否本来就存在：失败时只清理自己新建的空壳，不动已有数据
+    const existed = await fs.exists(DATA_DIR, { baseDir: bd }).catch(() => true)
     try {
-      const bd = baseDirOf(fs, base)
       await fs.mkdir(DATA_DIR, { baseDir: bd, recursive: true })
       await fs.writeTextFile(`${DATA_DIR}/.probe`, 'ok', { baseDir: bd })
       await fs.remove(`${DATA_DIR}/.probe`, { baseDir: bd }).catch(() => undefined)
       return base
     } catch {
+      // 目录写不进去（只读位置等）：删掉刚建的空壳，避免在程序目录留下无用的空文件夹
+      if (!existed) await fs.remove(DATA_DIR, { baseDir: bd, recursive: true }).catch(() => undefined)
       /* 尝试下一个位置 */
     }
   }
   return 'appdata'
+}
+
+/** 目录是否像一个萃序数据文件夹（含库 / 设置 / 模板任一特征） */
+async function looksLikeDataDir(fs: FsPlugin, abs: string): Promise<boolean> {
+  try {
+    return (
+      (await fs.exists(`${abs}/libraries`)) ||
+      (await fs.exists(`${abs}/settings.json`)) ||
+      (await fs.exists(`${abs}/templates`))
+    )
+  } catch {
+    return false
+  }
+}
+
+/**
+ * 探测常见位置的现有数据文件夹（OOBE「读取现有数据」用）：
+ * 0.2.0+ 的 AppData 兜底位置、0.1.0 的遗留目录、家目录兜底；
+ * 默认根（exe 目录旁）本身有数据时不会进 OOBE，故无需列入。
+ */
+async function probeExistingRoots(fs: FsPlugin, defRoot: BaseDir): Promise<string[]> {
+  const candidates: { base: BaseDir; dir: string }[] = [
+    { base: 'appdata', dir: DATA_DIR },
+    { base: 'appdata', dir: LEGACY_DIR },
+    { base: 'home', dir: DATA_DIR },
+  ]
+  const out: string[] = []
+  for (const c of candidates) {
+    if (c.base === defRoot && c.dir === DATA_DIR) continue
+    let abs: string
+    try {
+      abs = `${await describeBaseDir(c.base)}/${c.dir}`.replace(/[\\/]+$/, '')
+    } catch {
+      continue
+    }
+    if (out.includes(abs)) continue
+    if (await looksLikeDataDir(fs, abs)) out.push(abs)
+  }
+  return out
 }
 
 /** 探测一个绝对路径目录是否可写（在其中创建并删除探针文件） */
@@ -157,13 +208,6 @@ export function createTauriAdapter(): StorageAdapter {
     const { path: dirPath, opts } = await targetOf(dir)
     await fs.mkdir(dirPath, { recursive: true, ...opts } as Parameters<typeof fs.mkdir>[1])
     ensuredDirs.add(dir)
-  }
-
-  const describeBaseDir = async (base: BaseDir): Promise<string> => {
-    const path = await import('@tauri-apps/api/path')
-    const dir =
-      base === 'exe' ? await path.executableDir() : base === 'home' ? await path.homeDir() : await path.appDataDir()
-    return dir.replace(/[\\/]+$/, '')
   }
 
   return {
@@ -374,6 +418,14 @@ export function createTauriAdapter(): StorageAdapter {
       } catch {
         return false
       }
+    },
+    async probeExistingRoots() {
+      const fs = await fsReady()
+      return probeExistingRoots(fs, defRoot!)
+    },
+    async looksLikeDataDir(abs) {
+      const fs = await fsReady()
+      return looksLikeDataDir(fs, abs)
     },
     async describeDefaultRoot() {
       await ready

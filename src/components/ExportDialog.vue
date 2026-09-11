@@ -429,13 +429,16 @@ async function reveal() {
         </div>
       </section>
 
-      <section v-if="preview !== null" class="exp-section">
-        <h3>{{ t.exportDialog.preview }}</h3>
-        <pre class="preview">{{ preview }}</pre>
-      </section>
-      <section v-else-if="isBinaryFormat" class="exp-section">
-        <p class="hint">{{ t.exportDialog.noTextPreview }}</p>
-      </section>
+      <!-- 预览区：内容生成后淡入，格式切换时平滑替换 -->
+      <Transition name="fade" mode="out-in">
+        <section v-if="preview !== null" key="preview" class="exp-section">
+          <h3>{{ t.exportDialog.preview }}</h3>
+          <pre class="preview">{{ preview }}</pre>
+        </section>
+        <section v-else-if="isBinaryFormat" key="binary" class="exp-section">
+          <p class="hint">{{ t.exportDialog.noTextPreview }}</p>
+        </section>
+      </Transition>
     </div>
 
     <footer class="modal-foot export-foot">

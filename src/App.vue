@@ -172,6 +172,15 @@ async function closeWindow() {
   display: flex;
   flex-direction: column;
   height: 100%;
+  /* 启动进场：窗口亮出时内容轻微上浮淡入，一次性（reduced-motion 下被全局压缩到 1ms） */
+  animation: app-in 240ms var(--ease-sheet) both;
+}
+
+@keyframes app-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
 }
 
 /* ---------- 桌面标题栏 ---------- */

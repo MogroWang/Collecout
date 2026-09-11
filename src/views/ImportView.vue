@@ -407,6 +407,8 @@ async function finish() {
       </ol>
     </header>
 
+    <!-- 步骤内容切换：快速非线性过渡 -->
+    <Transition name="step" mode="out-in">
     <!-- 步骤 1：选择文件 -->
     <section v-if="step === 1" class="step-body">
       <div
@@ -731,6 +733,7 @@ async function finish() {
         {{ t.import.noConflict }}
       </p>
     </section>
+    </Transition>
 
     <footer class="wizard-foot">
       <div class="foot-pill">
