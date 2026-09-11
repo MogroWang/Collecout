@@ -48,13 +48,11 @@ export async function mkdirAbsolute(path: string): Promise<void> {
   await mkdir(path, { recursive: true })
 }
 
+/** 用系统文件管理器打开文件夹，或打开所在位置并选中文件。
+ *  走自研 Rust 命令（explorer / open / xdg-open）——opener 插件的 open_path 与
+ *  reveal_item_in_dir 还有插件自己的路径 scope 校验，会被静默拒绝。 */
 export async function revealInFinder(path: string, isDir: boolean): Promise<void> {
-  const opener = await import('@tauri-apps/plugin-opener')
-  if (isDir) {
-    await opener.openPath(path)
-  } else {
-    await opener.revealItemInDir(path)
-  }
+  await invoke('open_or_reveal', { path, reveal: !isDir })
 }
 
 /** 用系统浏览器打开链接：桌面端走 opener 插件，其他平台开新标签页 */

@@ -1,7 +1,7 @@
 {
   "name": "collecout",
   "private": true,
-  "version": "0.7.0",
+  "version": "0.8.0",
   "type": "module",
   "description": "萃序 Collecout —— 把 Word、Excel 和纯文本萃成结构化的信息库",
   "scripts": {

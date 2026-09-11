@@ -2,7 +2,7 @@
 export const t = {
   appName: '萃序',
   appNameEn: 'Collecout',
-  version: '0.7.0',
+  version: '0.8.0',
 
   nav: {
     libraries: '库',

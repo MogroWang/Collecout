@@ -49,29 +49,32 @@ const fontOptions = [
   { value: 'custom', label: t.settings.fontCustom },
 ]
 
-/** 下拉当前值：fontFamily 是预设 id 则原样，否则视为自定义 */
-const fontSelection = computed(() =>
-  (FONT_PRESET_IDS as readonly string[]).includes(settings.settings.fontFamily) ? settings.settings.fontFamily : 'custom',
-)
+/** 是否处于「自定义」输入模式（下拉选「自定义…」进入；恢复选预设时退出） */
+const isPreset = (v: string) => (FONT_PRESET_IDS as readonly string[]).includes(v)
+const fontCustomMode = ref(!isPreset(settings.settings.fontFamily))
+/** 自定义输入框的草稿；进入自定义模式时预填当前自定义值 */
+const customFontDraft = ref(fontCustomMode.value ? settings.settings.fontFamily : '')
 
-/** 自定义输入框的草稿：仅在从预设切到「自定义」时为空，之后与设置值双向同步 */
-const customFontDraft = ref(
-  (FONT_PRESET_IDS as readonly string[]).includes(settings.settings.fontFamily) ? '' : settings.settings.fontFamily,
+const fontSelection = computed(() =>
+  !fontCustomMode.value && isPreset(settings.settings.fontFamily) ? settings.settings.fontFamily : 'custom',
 )
 
 function onFontPreset(value: string) {
   if (value === 'custom') {
-    // 从预设切到自定义：沿用当前自定义值（可能为空，输入后生效）
-    void settings.set({ fontFamily: customFontDraft.value.trim() || 'system' })
+    // 只切换到自定义输入模式，不立即改设置——等用户输入（或保留已有自定义值）后再持久化
+    fontCustomMode.value = true
+    customFontDraft.value = isPreset(settings.settings.fontFamily) ? '' : settings.settings.fontFamily
     return
   }
+  fontCustomMode.value = false
   customFontDraft.value = ''
   void settings.set({ fontFamily: value })
 }
 
 function onCustomFontInput() {
   const v = customFontDraft.value.trim()
-  void settings.set({ fontFamily: v || 'system' })
+  // 输入被清空时保持原设置不动，等用户选回预设或输入新字体名
+  if (v) void settings.set({ fontFamily: v })
 }
 
 const formatOptions = [
@@ -284,6 +287,11 @@ async function applyNewRoot(dir: string | null) {
   flex-wrap: wrap;
 }
 
+/* 组内多行控件之间留出呼吸感 */
+.row + .row {
+  margin-top: 12px;
+}
+
 .row > span:first-child {
   font-weight: 500;
   flex: none;
@@ -312,8 +320,10 @@ async function applyNewRoot(dir: string | null) {
   background: #1b1b1d;
 }
 
+/* 自定义字体输入框：与下拉之间留出明显间隔 */
 .font-input {
   width: 220px;
+  margin-left: 8px;
 }
 
 /* 预览文本继承全局 --font（随上方选择即时更新） */
