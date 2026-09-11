@@ -396,8 +396,12 @@ async function pickNewLocation() {
 </script>
 
 <template>
-  <!-- 多选模式下可在页面任意空白处按下拖出选框（含表头/卡片间隙），这里接管 mousedown -->
-  <div v-if="library" class="page" @mousedown="onMarqueeStart" @click.capture="onCaptureClick">
+  <div class="page" @mousedown="onMarqueeStart" @click.capture="onCaptureClick">
+    <!-- 根必须是单元素：外层由 <Transition mode="out-in"> 驱动页面切换，
+         根级注释或 v-if 的空分支都会让组件根变成 fragment/注释节点，
+         页面切换会整体卡死成空白页（与 DataTable.out-in.spec.ts 同一个坑） -->
+    <template v-if="library">
+    <!-- 多选模式下可在页面任意空白处按下拖出选框（含表头/卡片间隙），这里接管 mousedown -->
     <header class="page-head">
       <div class="head-text">
         <h1 class="large-title">{{ library.name }}</h1>
@@ -653,6 +657,17 @@ async function pickNewLocation() {
         </button>
       </footer>
     </AppModal>
+    </template>
+
+    <!-- 库不存在（已删除或无效链接）：给出出路，绝不留空白 -->
+    <EmptyState
+      v-else
+      icon="doc"
+      :title="t.library.missingTitle"
+      :desc="t.library.missingDesc"
+    >
+      <button class="btn btn-primary" @click="router.push('/')">{{ t.nav.libraries }}</button>
+    </EmptyState>
   </div>
 </template>
 

@@ -138,6 +138,8 @@ export const t = {
     changeLocation: '更改位置',
     locationChanged: (p: string) => `库已移动到 ${p}`,
     locationMovedInner: '库已移回软件数据文件夹',
+    missingTitle: '找不到这个库',
+    missingDesc: '它可能已被删除，或数据尚未加载完成。',
   },
 
   filterPanel: {

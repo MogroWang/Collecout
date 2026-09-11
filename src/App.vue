@@ -64,17 +64,8 @@ async function closeWindow() {
 
 <template>
   <div class="app-frame" :class="{ mobile }">
-    <!-- 桌面标题栏：左展开按钮 + logo、中页面标题/悬停提示、右窗口药丸；空白处按住即可拖动窗口 -->
+    <!-- 桌面标题栏：左 logo、中页面标题/悬停提示、右窗口药丸；空白处按住即可拖动窗口 -->
     <header v-if="isDesktop()" class="titlebar" data-tauri-drag-region>
-      <button
-        v-if="ui.sidebarCollapsed"
-        class="icon-btn tb-expand"
-        :aria-label="t.hints.sidebarExpand"
-        v-hint="t.hints.sidebarExpand"
-        @click="ui.sidebarCollapsed = false"
-      >
-        <AppIcon name="chevron-right" :size="15" />
-      </button>
       <RouterLink v-if="!fullscreen" to="/" class="tb-brand" :aria-label="t.hints.brand" v-hint="t.hints.brand">
         <img src="/logo-text.svg" alt="" class="tb-logo" />
       </RouterLink>
@@ -156,6 +147,19 @@ async function closeWindow() {
           </div>
         </aside>
 
+        <!-- 侧边栏折叠后的悬浮展开把手：贴左缘垂直居中，桌面与 web 预览通用 -->
+        <Transition name="fab">
+          <button
+            v-if="!mobile && ui.sidebarCollapsed"
+            class="sidebar-fab"
+            :aria-label="t.hints.sidebarExpand"
+            v-hint="t.hints.sidebarExpand"
+            @click="ui.sidebarCollapsed = false"
+          >
+            <AppIcon name="chevron-right" :size="16" />
+          </button>
+        </Transition>
+
         <!-- 移动端顶栏 -->
         <header v-if="mobile" class="m-topbar">
           <RouterLink to="/" class="m-logo-link" :aria-label="t.nav.libraries">
@@ -224,13 +228,43 @@ async function closeWindow() {
   -webkit-user-select: none;
 }
 
-/* 侧边栏收起后，标题栏左侧出现的展开按钮 */
-.tb-expand {
-  flex: none;
-  width: 28px;
-  height: 28px;
-  margin-right: 2px;
+/* 侧边栏完全折叠后，贴左缘垂直居中的悬浮展开把手（web 预览没有标题栏，也能展开） */
+.sidebar-fab {
+  position: fixed;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 40;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: var(--elevated);
+  border: 1px solid var(--hairline);
+  box-shadow: var(--shadow-1);
   color: var(--ink-2);
+}
+
+.sidebar-fab:hover {
+  color: var(--ink);
+  border-color: var(--hairline-strong);
+}
+
+/* 与按钮的 translateY(-50%) 共存的进出过渡 */
+.fab-enter-active {
+  transition: opacity 150ms ease, transform 200ms var(--ease-sheet);
+}
+
+.fab-leave-active {
+  transition: opacity 120ms ease, transform 140ms ease-in;
+}
+
+.fab-enter-from,
+.fab-leave-to {
+  opacity: 0;
+  transform: translateY(-50%) translateX(-8px);
 }
 
 .tb-brand {
@@ -359,12 +393,13 @@ async function closeWindow() {
     opacity 180ms ease;
 }
 
-/* 折叠：宽度与外边距收到 0，内容整体淡出；内层定宽避免重排抖动 */
+/* 折叠：宽度、外边距与边框全部收到 0（透明但占位的边框会让侧栏残留 2px），
+   内容整体淡出；内层定宽避免重排抖动 */
 .sidebar.collapsed {
   width: 0;
   margin-left: 0;
   margin-right: 0;
-  border-color: transparent;
+  border-width: 0;
   opacity: 0;
   pointer-events: none;
 }
