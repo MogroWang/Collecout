@@ -518,12 +518,17 @@ for (const [s, name] of [
   [50, 'StoreLogo.png'],
 ]) emit(name, winStyle(s, 0.12))
 
-// Windows ico：16–128 用 BMP（shell 对小尺寸 PNG 兼容差），256 用 PNG；
-// 补齐 20/40/96 等 DPI 缩放（125%/150%）常用档位，避免取近放大而发虚
+// Windows ico：16–128 用 BMP（shell 对小尺寸 PNG 兼容差），256 用 PNG。
+// 档位按 Windows 任务栏 / 桌面在常见 DPI 缩放下的真实请求尺寸补齐——
+// 任务栏 24 系（100–300% → 24/30/36/42/48/54/60/72）、大图标 32 系（32/40/48/56/64/72/80/96）、
+// 小图标 16 系（16/20/28）；缺档时 explorer 拿最近档就近缩放，任务栏图标因此发虚。
 emit(
   'icon.ico',
   encodeIco([
-    ...[16, 20, 24, 32, 40, 48, 64, 96, 128].map((s) => ({ size: s, data: encodeIcoBmp(winRgba(s), s) })),
+    ...[16, 20, 24, 28, 30, 32, 36, 40, 42, 48, 54, 56, 60, 64, 72, 80, 96, 128].map((s) => ({
+      size: s,
+      data: encodeIcoBmp(winRgba(s), s),
+    })),
     { size: 256, data: winStyle(256) },
   ]),
 )
