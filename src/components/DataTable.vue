@@ -65,70 +65,80 @@ function onRowClick(entry: Entry, index: number, e: MouseEvent) {
 </script>
 
 <template>
-  <table class="data-table">
-    <thead>
-      <tr>
-        <th v-if="multiSelect || selected.size > 0" class="col-check">
-          <input type="checkbox" :checked="allSelected()" aria-label="全选" @change="emit('toggle-all')" />
-        </th>
-        <th
-          v-for="field in props.fields"
-          :key="field.id"
-          class="sortable"
-          :class="{ sorted: props.sort?.fieldId === field.id }"
-          @click="onHeaderClick(field)"
-        >
-          <span class="th-inner">
-            {{ field.name }}
-            <span v-if="props.sort?.fieldId === field.id" class="sort-mark">{{ props.sort.dir === 'asc' ? '↑' : '↓' }}</span>
-          </span>
-        </th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr
-        v-for="(entry, i) in props.entries"
-        :key="entry.id"
-        class="row-click"
-        :class="{ selected: props.selected.has(entry.id) }"
-        :data-entry-id="entry.id"
-        @click="onRowClick(entry, i, $event)"
-      >
-        <td v-if="multiSelect || selected.size > 0" class="col-check" @click.stop>
-          <input
-            type="checkbox"
-            :checked="props.selected.has(entry.id)"
-            :aria-label="`选择 ${entry.id}`"
-            @change="onCheck(entry, i, $event)"
-          />
-        </td>
-        <td v-for="field in props.fields" :key="field.id">
-          <button
-            v-if="cellImage(entry, field)"
-            type="button"
-            class="cell-image"
-            @click.stop="previewUrl = cellImage(entry, field)"
+  <div class="data-table-wrap">
+    <!-- 单根容器：<Transition mode="out-in"> 要求子组件只有一个根节点，根级注释也算根；
+         否则表格/卡片切换会整体卡死（见 DataTable.out-in.spec.ts） -->
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th v-if="multiSelect || selected.size > 0" class="col-check">
+            <input type="checkbox" :checked="allSelected()" aria-label="全选" @change="emit('toggle-all')" />
+          </th>
+          <th
+            v-for="field in props.fields"
+            :key="field.id"
+            class="sortable"
+            :class="{ sorted: props.sort?.fieldId === field.id }"
+            @click="onHeaderClick(field)"
           >
-            <img :src="cellImage(entry, field) ?? ''" alt="" loading="lazy" />
-          </button>
-          <span v-else-if="field.kind === 'tag' && display(field, entry)" class="chip">{{ display(field, entry) }}</span>
-          <span v-else-if="field.kind === 'date'" class="cell-date">{{ display(field, entry) }}</span>
-          <span v-else class="cell-truncate" :title="display(field, entry)">{{ display(field, entry) }}</span>
-        </td>
-      </tr>
-    </tbody>
-  </table>
+            <span class="th-inner">
+              {{ field.name }}
+              <span v-if="props.sort?.fieldId === field.id" class="sort-mark">{{ props.sort.dir === 'asc' ? '↑' : '↓' }}</span>
+            </span>
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr
+          v-for="(entry, i) in props.entries"
+          :key="entry.id"
+          class="row-click"
+          :class="{ selected: props.selected.has(entry.id) }"
+          :data-entry-id="entry.id"
+          @click="onRowClick(entry, i, $event)"
+        >
+          <td v-if="multiSelect || selected.size > 0" class="col-check" @click.stop>
+            <input
+              type="checkbox"
+              :checked="props.selected.has(entry.id)"
+              :aria-label="`选择 ${entry.id}`"
+              @change="onCheck(entry, i, $event)"
+            />
+          </td>
+          <td v-for="field in props.fields" :key="field.id">
+            <button
+              v-if="cellImage(entry, field)"
+              type="button"
+              class="cell-image"
+              @click.stop="previewUrl = cellImage(entry, field)"
+            >
+              <img :src="cellImage(entry, field) ?? ''" alt="" loading="lazy" />
+            </button>
+            <span v-else-if="field.kind === 'tag' && display(field, entry)" class="chip">{{ display(field, entry) }}</span>
+            <span v-else-if="field.kind === 'date'" class="cell-date">{{ display(field, entry) }}</span>
+            <span v-else class="cell-truncate" :title="display(field, entry)">{{ display(field, entry) }}</span>
+          </td>
+        </tr>
+      </tbody>
+    </table>
 
-  <Teleport to="body">
-    <Transition name="fade">
-      <div v-if="previewUrl" class="img-preview" role="button" @click="previewUrl = null">
-        <img :src="previewUrl" alt="" />
-      </div>
-    </Transition>
-  </Teleport>
+    <Teleport to="body">
+      <Transition name="fade">
+        <div v-if="previewUrl" class="img-preview" role="button" @click="previewUrl = null">
+          <img :src="previewUrl" alt="" />
+        </div>
+      </Transition>
+    </Teleport>
+  </div>
 </template>
 
 <style scoped>
+/* 容器按表格内容自然宽度展开，水平滚动条仍由外层滚动区接管 */
+.data-table-wrap {
+  width: max-content;
+  min-width: 100%;
+}
+
 .cell-image {
   display: inline-flex;
   width: 40px;

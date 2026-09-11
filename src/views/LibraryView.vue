@@ -408,27 +408,27 @@ async function pickNewLocation() {
         <p class="meta loc-line">
           <AppIcon name="folder" :size="13" />
           <span class="loc-text">{{ locationText }}</span>
-          <button v-if="isDesktop()" class="btn btn-ghost btn-compact" @click="showLocation = true">
+          <button v-if="isDesktop()" class="btn btn-ghost btn-compact" v-hint="t.hints.libChangeLocation" @click="showLocation = true">
             {{ t.library.changeLocation }}
           </button>
         </p>
       </div>
       <div class="head-actions">
-        <button class="icon-btn" :aria-label="t.common.rename" @click="renameText = library.name; showRename = true">
+        <button class="icon-btn" :aria-label="t.common.rename" v-hint="t.hints.libRename" @click="renameText = library.name; showRename = true">
           <AppIcon name="pencil" />
         </button>
-        <button class="icon-btn danger" :aria-label="t.common.delete" @click="showDelete = true">
+        <button class="icon-btn danger" :aria-label="t.common.delete" v-hint="t.hints.libDelete" @click="showDelete = true">
           <AppIcon name="trash" />
         </button>
-        <button class="btn" @click="startAdd">
+        <button class="btn" v-hint="t.hints.libAddEntry" @click="startAdd">
           <AppIcon name="plus" :size="15" />
           {{ t.library.addEntry }}
         </button>
-        <button class="btn" @click="router.push(`/import?lib=${library.id}`)">
+        <button class="btn" v-hint="t.hints.libImportHere" @click="router.push(`/import?lib=${library.id}`)">
           <AppIcon name="import" :size="15" />
           {{ t.library.importHere }}
         </button>
-        <button class="btn btn-primary" @click="showExport = true">
+        <button class="btn btn-primary" v-hint="t.hints.libExport" @click="showExport = true">
           <AppIcon name="export" :size="15" />
           {{ t.library.export }}
         </button>
@@ -445,18 +445,18 @@ async function pickNewLocation() {
     <template v-else>
       <div class="toolbar">
         <div class="seg">
-          <button :class="{ on: view === 'table' }" @click="view = 'table'">{{ t.library.table }}</button>
-          <button :class="{ on: view === 'cards' }" @click="view = 'cards'">{{ t.library.cards }}</button>
+          <button :class="{ on: view === 'table' }" v-hint="t.hints.libTable" @click="view = 'table'">{{ t.library.table }}</button>
+          <button :class="{ on: view === 'cards' }" v-hint="t.hints.libCards" @click="view = 'cards'">{{ t.library.cards }}</button>
         </div>
 
         <!-- 多选 / 筛选 / 排序紧跟视图切换之后 -->
-        <button class="btn" :class="{ 'filter-on': multiSelect }" :title="t.library.multiSelectHint" @click="toggleMultiSelect">
+        <button class="btn" :class="{ 'filter-on': multiSelect }" :title="t.library.multiSelectHint" v-hint="t.hints.libMultiSelect" @click="toggleMultiSelect">
           <AppIcon name="check" :size="15" />
           {{ t.library.multiSelect }}
         </button>
 
         <div class="filter-anchor">
-          <button class="btn" :class="{ 'filter-on': isFiltering }" @click="showFilterPanel = !showFilterPanel">
+          <button class="btn" :class="{ 'filter-on': isFiltering }" v-hint="t.hints.libFilter" @click="showFilterPanel = !showFilterPanel">
             <AppIcon name="filter" :size="15" />
             {{ t.library.filter }}
             <span v-if="filter.rules.length > 0" class="chip">{{ filter.rules.length }}</span>
@@ -473,7 +473,7 @@ async function pickNewLocation() {
         </div>
 
         <div class="filter-anchor">
-          <button class="btn" :class="{ 'filter-on': sort !== null }" @click="showSortPanel = !showSortPanel">
+          <button class="btn" :class="{ 'filter-on': sort !== null }" v-hint="t.hints.libSort" @click="showSortPanel = !showSortPanel">
             <AppIcon name="sort" :size="15" />
             <template v-if="sort">
               {{ fields.find((f) => f.id === sort!.fieldId)?.name ?? t.library.sort }}
@@ -774,11 +774,7 @@ async function pickNewLocation() {
   border-radius: var(--r-s);
 }
 
-/* 表格按内容自然宽度展开：列多时出现水平滚动条，窄表仍撑满容器 */
-.entries-wrap :deep(.data-table) {
-  width: max-content;
-  min-width: 100%;
-}
+/* 表格宽度由 DataTable 内部的单根容器展开：列多时水平滚动，窄表仍撑满容器 */
 
 /* 框选矩形 */
 .marquee {

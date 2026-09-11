@@ -2,7 +2,7 @@
 export const t = {
   appName: '萃序',
   appNameEn: 'Collecout',
-  version: '0.8.0',
+  version: '0.9.0',
 
   nav: {
     libraries: '库',
@@ -36,6 +36,32 @@ export const t = {
     maximize: '最大化',
     restore: '还原',
     close: '关闭',
+  },
+
+  /** 控件悬停提示：显示在桌面标题栏中间，说明当前指向控件的用途 */
+  hints: {
+    brand: '回到库列表首页',
+    navLibraries: '查看所有信息库',
+    navTemplates: '管理提取字段所用的模板',
+    navSettings: '调整主题、字体与数据存储位置',
+    minimize: '最小化窗口',
+    maximize: '最大化或还原窗口',
+    close: '关闭窗口',
+    sidebarCollapse: '收起侧边栏，把空间留给内容',
+    sidebarExpand: '展开侧边栏',
+    homeImport: '进入向导，导入数据文件，快速建立数据库。',
+    homeNewLibrary: '新建一个空的信息库，选择模板与存放位置。',
+    libRename: '重命名这个库',
+    libDelete: '删除这个库及其全部条目',
+    libAddEntry: '手动新建一条条目',
+    libImportHere: '进入向导，把数据文件导入到当前库。',
+    libExport: '把库中的条目导出为文件',
+    libMultiSelect: '开启多选，可拖动框选或滑动批量选择条目',
+    libFilter: '按字段筛选条目',
+    libSort: '选择排序字段与方向',
+    libTable: '以表格查看条目',
+    libCards: '以卡片查看条目',
+    libChangeLocation: '查看并更改库文件的存放位置',
   },
 
   oobe: {

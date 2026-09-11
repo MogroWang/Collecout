@@ -13,10 +13,17 @@ export const useUiStore = defineStore('ui', {
     toasts: [] as Toast[],
     /** 标题栏当前显示的页面标题；空串时显示应用名 */
     pageTitle: '',
+    /** 鼠标悬停在某控件上时的用途说明；空串时标题栏中间回落显示页面标题 */
+    hoverHint: '',
+    /** 桌面侧边栏是否收起（点右下角按钮折叠，标题栏按钮展开） */
+    sidebarCollapsed: false,
   }),
   actions: {
     setPageTitle(title: string) {
       this.pageTitle = title
+    },
+    setHoverHint(hint: string | null) {
+      this.hoverHint = hint ?? ''
     },
     toast(text: string, kind: Toast['kind'] = 'info', duration = 3200) {
       const id = ++seq

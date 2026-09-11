@@ -25,6 +25,9 @@ const fullscreen = computed(() => route.name === 'oobe')
 
 /** 标题栏标题：各页面通过 ui store 声明，缺省回落到应用名 */
 const titlebarTitle = computed(() => ui.pageTitle || t.appName)
+/** 悬停控件时标题栏中间显示该控件的用途说明，否则显示页面标题 */
+const isHint = computed(() => ui.hoverHint !== '')
+const tbCenter = computed(() => (isHint.value ? ui.hoverHint : titlebarTitle.value))
 
 /* ---------- 桌面标题栏（窗口控制 + 拖动） ---------- */
 const maximized = ref(false)
@@ -61,24 +64,35 @@ async function closeWindow() {
 
 <template>
   <div class="app-frame" :class="{ mobile }">
-    <!-- 桌面标题栏：左 logo、中页面标题、右窗口药丸；空白处按住即可拖动窗口 -->
+    <!-- 桌面标题栏：左展开按钮 + logo、中页面标题/悬停提示、右窗口药丸；空白处按住即可拖动窗口 -->
     <header v-if="isDesktop()" class="titlebar" data-tauri-drag-region>
-      <RouterLink v-if="!fullscreen" to="/" class="tb-brand" :aria-label="t.nav.libraries">
+      <button
+        v-if="ui.sidebarCollapsed"
+        class="icon-btn tb-expand"
+        :aria-label="t.hints.sidebarExpand"
+        v-hint="t.hints.sidebarExpand"
+        @click="ui.sidebarCollapsed = false"
+      >
+        <AppIcon name="chevron-right" :size="15" />
+      </button>
+      <RouterLink v-if="!fullscreen" to="/" class="tb-brand" :aria-label="t.hints.brand" v-hint="t.hints.brand">
         <img src="/logo-text.svg" alt="" class="tb-logo" />
       </RouterLink>
       <span v-else class="tb-brand">
         <img src="/logo-text.svg" alt="" class="tb-logo" />
       </span>
-      <span class="tb-title" data-tauri-drag-region>{{ titlebarTitle }}</span>
+      <Transition name="hint" mode="out-in">
+        <span :key="tbCenter" class="tb-title" :class="{ 'tb-hint': isHint }" data-tauri-drag-region>{{ tbCenter }}</span>
+      </Transition>
       <div class="win-controls">
-        <button class="wc-btn" :aria-label="t.titlebar.minimize" @click="minimize">
+        <button class="wc-btn" :aria-label="t.titlebar.minimize" v-hint="t.hints.minimize" @click="minimize">
           <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 6h8" stroke="currentColor" stroke-width="1.2" /></svg>
         </button>
-        <button class="wc-btn" :aria-label="maximized ? t.titlebar.restore : t.titlebar.maximize" @click="toggleMaximize">
+        <button class="wc-btn" :aria-label="maximized ? t.titlebar.restore : t.titlebar.maximize" v-hint="t.hints.maximize" @click="toggleMaximize">
           <svg v-if="!maximized" width="12" height="12" viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7" rx="1" fill="none" stroke="currentColor" stroke-width="1.2" /></svg>
           <svg v-else width="12" height="12" viewBox="0 0 12 12"><rect x="1.5" y="3.5" width="6" height="6" rx="1" fill="none" stroke="currentColor" stroke-width="1.1" /><path d="M4 3.5V2.6a1 1 0 0 1 1-1h4.4a1 1 0 0 1 1 1V7a1 1 0 0 1-1 1h-.9" fill="none" stroke="currentColor" stroke-width="1.1" /></svg>
         </button>
-        <button class="wc-btn wc-close" :aria-label="t.titlebar.close" @click="closeWindow">
+        <button class="wc-btn wc-close" :aria-label="t.titlebar.close" v-hint="t.hints.close" @click="closeWindow">
           <AppIcon name="x" :size="13" />
         </button>
       </div>
@@ -95,39 +109,51 @@ async function closeWindow() {
 
     <template v-else>
       <div class="app-shell">
-        <!-- 桌面侧栏 -->
-        <aside v-if="!mobile" class="sidebar">
-          <nav class="side-nav">
-            <RouterLink class="nav-item" :class="{ on: route.name === 'home' }" to="/">
-              <AppIcon name="library" :size="16" />
-              {{ t.nav.libraries }}
-            </RouterLink>
-            <RouterLink class="nav-item" :class="{ on: route.name === 'templates' }" to="/templates">
-              <AppIcon name="layers" :size="16" />
-              {{ t.nav.templates }}
-            </RouterLink>
-            <RouterLink class="nav-item" :class="{ on: route.name === 'settings' }" to="/settings">
-              <AppIcon name="gear" :size="16" />
-              {{ t.nav.settings }}
-            </RouterLink>
-          </nav>
+        <!-- 桌面侧栏：悬浮圆角卡片，右下角可收起（收起后从标题栏展开） -->
+        <aside v-if="!mobile" class="sidebar" :class="{ collapsed: ui.sidebarCollapsed }">
+          <div class="sidebar-inner">
+            <nav class="side-nav">
+              <RouterLink class="nav-item" :class="{ on: route.name === 'home' }" to="/" v-hint="t.hints.navLibraries">
+                <AppIcon name="library" :size="16" />
+                {{ t.nav.libraries }}
+              </RouterLink>
+              <RouterLink class="nav-item" :class="{ on: route.name === 'templates' }" to="/templates" v-hint="t.hints.navTemplates">
+                <AppIcon name="layers" :size="16" />
+                {{ t.nav.templates }}
+              </RouterLink>
+              <RouterLink class="nav-item" :class="{ on: route.name === 'settings' }" to="/settings" v-hint="t.hints.navSettings">
+                <AppIcon name="gear" :size="16" />
+                {{ t.nav.settings }}
+              </RouterLink>
+            </nav>
 
-          <div class="side-libraries">
-            <div class="side-label">{{ t.nav.libraries }}</div>
-            <RouterLink
-              v-for="lib in libraries.libraries"
-              :key="lib.id"
-              class="lib-item"
-              :class="{ on: activeLibraryId === lib.id }"
-              :to="`/library/${lib.id}`"
-            >
-              <span class="lib-name">{{ lib.name }}</span>
-              <span class="lib-count">{{ lib.entries.length }}</span>
-            </RouterLink>
-            <p v-if="libraries.libraries.length === 0" class="hint side-empty">{{ t.home.emptyTitle }}</p>
+            <div class="side-libraries">
+              <div class="side-label">{{ t.nav.libraries }}</div>
+              <RouterLink
+                v-for="lib in libraries.libraries"
+                :key="lib.id"
+                class="lib-item"
+                :class="{ on: activeLibraryId === lib.id }"
+                :to="`/library/${lib.id}`"
+              >
+                <span class="lib-name">{{ lib.name }}</span>
+                <span class="lib-count">{{ lib.entries.length }}</span>
+              </RouterLink>
+              <p v-if="libraries.libraries.length === 0" class="hint side-empty">{{ t.home.emptyTitle }}</p>
+            </div>
+
+            <footer class="side-foot">
+              <span>v{{ t.version }}</span>
+              <button
+                class="icon-btn side-collapse"
+                :aria-label="t.hints.sidebarCollapse"
+                v-hint="t.hints.sidebarCollapse"
+                @click="ui.sidebarCollapsed = true"
+              >
+                <AppIcon name="chevron-left" :size="15" />
+              </button>
+            </footer>
           </div>
-
-          <footer class="side-foot">v{{ t.version }}</footer>
         </aside>
 
         <!-- 移动端顶栏 -->
@@ -135,6 +161,7 @@ async function closeWindow() {
           <RouterLink to="/" class="m-logo-link" :aria-label="t.nav.libraries">
             <img src="/logo-text.svg" alt="" class="m-logo" />
           </RouterLink>
+          <span class="m-version">v{{ t.version }}</span>
         </header>
 
         <main class="main">
@@ -191,10 +218,19 @@ async function closeWindow() {
   align-items: center;
   height: 46px;
   padding: 0 10px 0 12px;
-  background: var(--bg);
+  background: var(--surface);
   border-bottom: 1px solid var(--hairline);
   user-select: none;
   -webkit-user-select: none;
+}
+
+/* 侧边栏收起后，标题栏左侧出现的展开按钮 */
+.tb-expand {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  margin-right: 2px;
+  color: var(--ink-2);
 }
 
 .tb-brand {
@@ -229,6 +265,31 @@ async function closeWindow() {
   font-size: 13px;
   font-weight: 600;
   color: var(--ink-2);
+}
+
+/* 悬停提示与页面标题共用同一位置，视觉上略轻一级 */
+.tb-title.tb-hint {
+  font-weight: 500;
+  color: var(--ink-3);
+}
+
+/* 提示 ↔ 标题的快速交叉切换：轻位移淡入，同路径退出 */
+.hint-enter-active {
+  transition: opacity 130ms ease, transform 130ms var(--ease-sheet);
+}
+
+.hint-leave-active {
+  transition: opacity 80ms ease;
+}
+
+.hint-enter-from {
+  opacity: 0;
+  transform: translateX(-50%) translateY(3px);
+}
+
+.hint-leave-to {
+  opacity: 0;
+  transform: translateX(-50%);
 }
 
 /* 窗口药丸控件：收在标题栏右侧 */
@@ -281,14 +342,38 @@ async function closeWindow() {
   min-height: 0;
 }
 
-/* ---------- 侧栏 ---------- */
+/* ---------- 侧栏：悬浮圆角卡片 ---------- */
 .sidebar {
   flex: none;
   width: var(--sidebar-w);
+  margin: 10px 2px 10px 10px;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: 14px;
+  box-shadow: var(--shadow-1);
+  transition:
+    width 300ms var(--ease-sheet),
+    margin 300ms var(--ease-sheet),
+    border-color 200ms ease,
+    opacity 180ms ease;
+}
+
+/* 折叠：宽度与外边距收到 0，内容整体淡出；内层定宽避免重排抖动 */
+.sidebar.collapsed {
+  width: 0;
+  margin-left: 0;
+  margin-right: 0;
+  border-color: transparent;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.sidebar-inner {
+  width: var(--sidebar-w);
+  height: 100%;
   display: flex;
   flex-direction: column;
-  background: var(--surface);
-  border-right: 1px solid var(--hairline);
   padding: 12px 10px 10px;
 }
 
@@ -378,9 +463,23 @@ async function closeWindow() {
 }
 
 .side-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   padding: 10px 10px 2px;
   font-size: 11px;
   color: var(--ink-3);
+}
+
+/* 侧栏右下角的收起按钮 */
+.side-collapse {
+  width: 24px;
+  height: 24px;
+  color: var(--ink-3);
+}
+
+.side-collapse:hover {
+  color: var(--ink);
 }
 
 /* ---------- 主区 ---------- */
@@ -429,6 +528,13 @@ async function closeWindow() {
   height: 28px;
   width: auto;
   display: block;
+}
+
+.m-version {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
 }
 
 .app-frame.mobile .main {

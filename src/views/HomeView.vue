@@ -82,11 +82,11 @@ async function createLibrary() {
     <header class="page-head">
       <h1 class="large-title">{{ t.home.title }}</h1>
       <div class="head-actions">
-        <button class="btn" @click="router.push('/import')">
+        <button class="btn" v-hint="t.hints.homeImport" @click="router.push('/import')">
           <AppIcon name="import" :size="15" />
           {{ t.home.import }}
         </button>
-        <button class="btn btn-primary" @click="openNewDialog">
+        <button class="btn btn-primary" v-hint="t.hints.homeNewLibrary" @click="openNewDialog">
           <AppIcon name="plus" :size="15" />
           {{ t.nav.newLibrary }}
         </button>

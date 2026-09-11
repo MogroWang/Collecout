@@ -64,14 +64,22 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   border-top: 1px solid var(--hairline);
 }
 
+/* 进出场同路径：进 260ms 弹性曲线入场，出 180ms 加速离场 */
 .slide-enter-active,
 .slide-leave-active {
   transition: opacity 200ms ease;
 }
 
-.slide-enter-active .drawer-panel,
-.slide-leave-active .drawer-panel {
+.slide-leave-active {
+  transition: opacity 140ms ease;
+}
+
+.slide-enter-active .drawer-panel {
   transition: transform 260ms var(--ease-sheet);
+}
+
+.slide-leave-active .drawer-panel {
+  transition: transform 180ms cubic-bezier(0.4, 0, 1, 1);
 }
 
 .slide-enter-from,
