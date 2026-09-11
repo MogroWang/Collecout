@@ -122,7 +122,7 @@ async function createLibrary() {
     </div>
     </Transition>
 
-    <AppModal v-if="showNew" @close="showNew = false">
+    <AppModal :open="showNew" @close="showNew = false">
       <header class="modal-head">
         <h2>{{ t.home.newLibTitle }}</h2>
         <button class="icon-btn" :aria-label="t.common.close" @click="showNew = false"><AppIcon name="x" /></button>

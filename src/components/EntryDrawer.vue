@@ -7,21 +7,29 @@ import AppDrawer from './AppDrawer.vue'
 import AppIcon from './AppIcon.vue'
 import FieldInput from './FieldInput.vue'
 
-const props = defineProps<{ library: Library; template: Template; entry: Entry; /** 手动新建模式：不显示删除与来源 */ creating?: boolean }>()
+const props = defineProps<{ library: Library; template: Template; /** 常驻抽屉：关闭时为 null */ entry: Entry | null; /** 手动新建模式：不显示删除与来源 */ creating?: boolean }>()
 const emit = defineEmits<{ close: []; save: [entry: Entry]; delete: [id: string] }>()
 
 const libraries = useLibrariesStore()
 
 const draft = reactive({
-  values: { ...props.entry.values } as Record<string, EntryValue | undefined>,
+  values: { ...(props.entry?.values ?? {}) } as Record<string, EntryValue | undefined>,
 })
+
+/* 组件常驻：每次打开（entry 换人）都重置草稿，避免残留上一次的编辑 */
+watch(
+  () => props.entry,
+  (entry) => {
+    draft.values = { ...(entry?.values ?? {}) }
+  },
+)
 
 /* 条目图片（Excel 单元格图片）：按字段归属展示，读字节转 blob URL */
 const imageUrls = ref<Record<string, string>>({})
 const previewImage = ref<string | null>(null)
 const urlCache = new Map<string, string>()
 
-const entryImages = computed(() => props.entry.images ?? [])
+const entryImages = computed(() => props.entry?.images ?? [])
 
 function imagesOf(fieldId: string | undefined): { storedAs: string; url: string }[] {
   return entryImages.value
@@ -46,6 +54,7 @@ watch(
 )
 
 function save() {
+  if (!props.entry) return
   const values: Record<string, EntryValue> = {}
   for (const [k, v] of Object.entries(draft.values)) {
     if (v !== undefined) values[k] = v
@@ -54,6 +63,7 @@ function save() {
 }
 
 function remove() {
+  if (!props.entry) return
   if (window.confirm(t.entryDrawer.deleteConfirm)) emit('delete', props.entry.id)
 }
 
@@ -63,7 +73,7 @@ function isTitle(field: Template['fields'][number]): boolean {
 </script>
 
 <template>
-  <AppDrawer @close="emit('close')">
+  <AppDrawer :open="!!props.entry" @close="emit('close')">
     <template #title>
       <h2>{{ props.creating ? t.library.addEntry : t.entryDrawer.title }}</h2>
     </template>
@@ -105,14 +115,14 @@ function isTitle(field: Template['fields'][number]): boolean {
         </div>
       </div>
 
-      <p v-if="!props.creating" class="meta source-line">
+      <p v-if="props.entry && !props.creating" class="meta source-line">
         <AppIcon name="doc" :size="13" />
         {{ t.entryDrawer.sourceFrom(props.entry.sourceRef.fileName, props.entry.sourceRef.locator) }}
       </p>
     </div>
 
     <template #footer>
-      <button v-if="!props.creating" class="btn btn-danger" @click="remove">
+      <button v-if="props.entry && !props.creating" class="btn btn-danger" @click="remove">
         <AppIcon name="trash" :size="15" />
         {{ t.common.delete }}
       </button>

@@ -756,12 +756,12 @@ async function finish() {
     </Teleport>
 
     <!-- 冲突条目编辑 -->
-    <AppModal v-if="editing" @close="editing = null">
+    <AppModal :open="!!editing" @close="editing = null">
       <header class="modal-head">
         <h2>{{ t.import.conflictEditTitle }}</h2>
         <button class="icon-btn" :aria-label="t.common.close" @click="editing = null"><AppIcon name="x" /></button>
       </header>
-      <div class="modal-body">
+      <div v-if="editing" class="modal-body">
         <p class="hint">{{ t.import.conflictEditDesc }}</p>
         <div v-for="field in appendPlans.get(editing.fileId)?.fields ?? []" :key="field.id" class="form-row edit-row">
           <label>{{ field.name }}</label>

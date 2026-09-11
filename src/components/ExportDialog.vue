@@ -32,6 +32,8 @@ const props = defineProps<{
   all: Entry[]
   filtered: Entry[]
   selected: Entry[]
+  /** 弹窗显隐：组件常驻，由 Transition 驱动进出动画 */
+  open: boolean
 }>()
 
 const emit = defineEmits<{ close: [] }>()
@@ -339,7 +341,7 @@ async function reveal() {
 </script>
 
 <template>
-  <AppModal wide @close="emit('close')">
+  <AppModal wide :open="props.open" @close="emit('close')">
     <header class="modal-head">
       <h2>{{ t.exportDialog.title }} · {{ props.library.name }}</h2>
       <button class="icon-btn" :aria-label="t.common.close" @click="emit('close')"><AppIcon name="x" /></button>

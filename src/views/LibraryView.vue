@@ -558,7 +558,7 @@ async function pickNewLocation() {
     </template>
 
     <EntryDrawer
-      v-if="openEntry"
+      :open="!!openEntry"
       :library="library"
       :template="template"
       :entry="openEntry"
@@ -569,8 +569,8 @@ async function pickNewLocation() {
 
     <!-- 手动新建条目：复用详情抽屉，保存后入库 -->
     <EntryDrawer
-      v-if="creating && blankEntry"
       creating
+      :open="creating"
       :library="library"
       :template="template"
       :entry="blankEntry"
@@ -579,7 +579,7 @@ async function pickNewLocation() {
     />
 
     <ExportDialog
-      v-if="showExport"
+      :open="showExport"
       :library="library"
       :template="template"
       :all="library.entries"
@@ -600,7 +600,7 @@ async function pickNewLocation() {
       }"
     />
 
-    <AppModal v-if="showRename" @close="showRename = false">
+    <AppModal :open="showRename" @close="showRename = false">
       <header class="modal-head">
         <h2>{{ t.library.renameTitle }}</h2>
         <button class="icon-btn" @click="showRename = false"><AppIcon name="x" /></button>
@@ -614,7 +614,7 @@ async function pickNewLocation() {
       </footer>
     </AppModal>
 
-    <AppModal v-if="showDelete" @close="showDelete = false">
+    <AppModal :open="showDelete" @close="showDelete = false">
       <header class="modal-head">
         <h2>{{ t.library.deleteTitle }}</h2>
         <button class="icon-btn" @click="showDelete = false"><AppIcon name="x" /></button>
@@ -632,7 +632,7 @@ async function pickNewLocation() {
     </AppModal>
 
     <!-- 更改库的存放位置 -->
-    <AppModal v-if="showLocation" @close="showLocation = false">
+    <AppModal :open="showLocation" @close="showLocation = false">
       <header class="modal-head">
         <h2>{{ t.library.location }}</h2>
         <button class="icon-btn" @click="showLocation = false"><AppIcon name="x" /></button>

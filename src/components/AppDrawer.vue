@@ -2,10 +2,11 @@
 import { onMounted, onBeforeUnmount } from 'vue'
 import AppIcon from './AppIcon.vue'
 
+const props = defineProps<{ /** 抽屉显隐：组件常驻，由 Transition 驱动进出动画 */ open: boolean }>()
 const emit = defineEmits<{ close: [] }>()
 
 function onKey(e: KeyboardEvent) {
-  if (e.key === 'Escape') emit('close')
+  if (e.key === 'Escape' && props.open) emit('close')
 }
 
 onMounted(() => window.addEventListener('keydown', onKey))
@@ -14,8 +15,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 
 <template>
   <Teleport to="body">
+    <!-- Transition 常驻 + v-if="open"：Teleport 内容随组件整体卸载时 leave 动画会被跳过 -->
     <Transition name="slide">
-      <div>
+      <div v-if="open">
         <div class="drawer-scrim" @click="emit('close')" />
         <div class="drawer-panel" role="dialog" aria-modal="true">
           <header class="drawer-head">

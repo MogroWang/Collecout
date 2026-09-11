@@ -426,14 +426,18 @@ textarea.input:focus {
 
 /* 弹层进出场：遮罩只做快速淡入淡出，运动交给面板本体——
    轻微上浮缩放 + 材质模糊，进 220ms / 出 150ms，进出同路径（非线性 ease-sheet）。
-   注意面板是遮罩的直接子元素，必须用 > * 选择器各自驱动。 */
-.sheet-enter-active,
+   注意：遮罩的时长必须与面板一致（Vue 按根元素的过渡时长决定何时清类，
+   遮罩更快会把面板动画拦腰截断），面板是遮罩的直接子元素，用 > * 各自驱动。 */
+.sheet-enter-active {
+  transition: opacity 220ms ease;
+}
+
 .sheet-leave-active {
   transition: opacity 150ms ease;
 }
 
 .sheet-enter-active > * {
-  transition: transform 220ms var(--ease-sheet), filter 200ms ease;
+  transition: transform 220ms var(--ease-sheet), filter 220ms ease;
 }
 
 .sheet-leave-active > * {

@@ -226,7 +226,7 @@ async function applyNewRoot(dir: string | null) {
       <p class="hint">© 2026 MogroWang Studio · MIT License</p>
     </section>
 
-    <AppModal v-if="showChange" @close="!changing && (showChange = false)">
+    <AppModal :open="showChange" @close="!changing && (showChange = false)">
       <header class="modal-head">
         <h2>{{ t.settings.changeLocationTitle }}</h2>
         <button class="icon-btn" :aria-label="t.common.close" @click="showChange = false"><AppIcon name="x" /></button>

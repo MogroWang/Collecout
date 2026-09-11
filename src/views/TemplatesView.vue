@@ -236,7 +236,7 @@ const strategyOptions = (['auto', 'keyword', 'regex', 'heading', 'tableMap'] as 
     </div>
 
     <!-- 删除模板的二次确认 -->
-    <AppModal v-if="showDeleteConfirm" @close="showDeleteConfirm = false">
+    <AppModal :open="showDeleteConfirm" @close="showDeleteConfirm = false">
       <header class="modal-head">
         <h2>{{ t.templates.deleteTitle }}</h2>
         <button class="icon-btn" :aria-label="t.common.close" @click="showDeleteConfirm = false"><AppIcon name="x" /></button>
