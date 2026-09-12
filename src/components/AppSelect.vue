@@ -187,7 +187,7 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onOutside, tru
 
 .sel.compact {
   height: 28px;
-  font-size: 12.5px;
+  font-size: 1.25rem;
 }
 
 .sel:hover:not(:disabled) {
@@ -258,7 +258,7 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onOutside, tru
   min-height: 28px;
   padding: 4px 9px;
   border-radius: var(--r-s);
-  font-size: 13px;
+  font-size: 1.3rem;
   color: var(--ink);
   text-align: left;
 }

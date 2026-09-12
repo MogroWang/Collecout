@@ -71,14 +71,14 @@ function cycle(field: FieldDef) {
 }
 
 .panel-head h3 {
-  font-size: 13px;
+  font-size: 1.3rem;
   font-weight: 600;
 }
 
 .btn-sm {
   height: 26px;
   padding: 0 10px;
-  font-size: 12px;
+  font-size: 1.2rem;
 }
 
 .sort-row {
@@ -88,7 +88,7 @@ function cycle(field: FieldDef) {
   gap: 10px;
   padding: 7px 10px;
   border-radius: var(--r-s);
-  font-size: 13px;
+  font-size: 1.3rem;
   color: var(--ink-2);
   text-align: left;
   transition: background 150ms ease, color 150ms ease;

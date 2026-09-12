@@ -112,12 +112,15 @@ export interface Settings {
   theme: ThemeMode
   defaultExportFormat: ExportFormat
   fontFamily: FontSetting
+  /** 界面字号缩放（1rem = 10px × 此值），设置页滑块可调，范围 0.85–1.3 */
+  fontScale: number
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   theme: 'system',
   defaultExportFormat: 'markdown',
   fontFamily: 'system',
+  fontScale: 1,
 }
 
 /** crypto.randomUUID 仅在安全上下文可用，兜底保证任何环境都能生成 id */

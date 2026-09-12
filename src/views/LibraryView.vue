@@ -778,7 +778,7 @@ async function pickNewLocation() {
 
 .btn-compact {
   height: 28px;
-  font-size: 12px;
+  font-size: 1.2rem;
 }
 
 /* 条目滚动区：垂直与水平滚动条独立于页面，滚动的是这块容器 */
@@ -803,7 +803,7 @@ async function pickNewLocation() {
 
 .loc-current {
   font-family: ui-monospace, 'SF Mono', Menlo, monospace;
-  font-size: 11.5px;
+  font-size: 1.15rem;
   word-break: break-all;
 }
 

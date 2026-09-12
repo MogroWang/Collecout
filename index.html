@@ -5,8 +5,60 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>萃序 Collecout</title>
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <style>
+      /* 启动界面：内联样式保证首帧即显示，与安卓原生 splash 同为白底 + 居中 logo，衔接无跳变。
+         logo 淡入用 easeOutExpo 类强减速曲线（先快后极缓地落定），淡出用全局 sheet 曲线，均为非线性。 */
+      #splash {
+        position: fixed;
+        inset: 0;
+        z-index: 999;
+        display: grid;
+        place-items: center;
+        background: #ffffff;
+      }
+      #splash img {
+        width: 76px;
+        height: 76px;
+        animation: splash-in 640ms cubic-bezier(0.16, 1, 0.3, 1) both;
+      }
+      @keyframes splash-in {
+        from {
+          opacity: 0;
+          transform: scale(0.92);
+        }
+        to {
+          opacity: 1;
+          transform: scale(1);
+        }
+      }
+      #splash.leaving {
+        animation: splash-out 420ms cubic-bezier(0.32, 0.72, 0, 1) forwards;
+      }
+      @keyframes splash-out {
+        to {
+          opacity: 0;
+          transform: scale(1.04);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #splash img {
+          animation: none;
+        }
+        #splash.leaving {
+          animation: splash-fade 160ms ease forwards;
+        }
+        @keyframes splash-fade {
+          to {
+            opacity: 0;
+          }
+        }
+      }
+    </style>
   </head>
   <body>
+    <div id="splash" aria-hidden="true">
+      <img src="/icon.svg" alt="" width="76" height="76" />
+    </div>
     <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>

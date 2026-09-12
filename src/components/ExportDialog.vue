@@ -472,7 +472,7 @@ async function reveal() {
 }
 
 .exp-section h3 {
-  font-size: 12px;
+  font-size: 1.2rem;
   font-weight: 600;
   color: var(--ink-2);
   margin-bottom: 8px;
@@ -513,7 +513,7 @@ async function reveal() {
 }
 
 .folder-ext-label {
-  font-size: 12px;
+  font-size: 1.2rem;
   font-weight: 600;
   color: var(--ink-2);
 }
@@ -562,7 +562,7 @@ async function reveal() {
 
 .fmt-name {
   font-weight: 600;
-  font-size: 13px;
+  font-size: 1.3rem;
 }
 
 .preview {
@@ -570,7 +570,7 @@ async function reveal() {
   padding: 12px;
   background: var(--surface-2);
   border-radius: var(--r-m);
-  font-size: 12px;
+  font-size: 1.2rem;
   font-family: ui-monospace, 'SF Mono', Menlo, monospace;
   max-height: 180px;
   overflow: auto;
@@ -595,6 +595,6 @@ async function reveal() {
 
 .btn-sm {
   height: 28px;
-  font-size: 12px;
+  font-size: 1.2rem;
 }
 </style>

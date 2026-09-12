@@ -298,7 +298,7 @@ const strategyOptions = (['auto', 'keyword', 'regex', 'heading', 'tableMap'] as 
 }
 
 .group-label {
-  font-size: 11px;
+  font-size: 1.1rem;
   font-weight: 600;
   color: var(--ink-3);
   padding: 10px 10px 6px;
@@ -309,7 +309,7 @@ const strategyOptions = (['auto', 'keyword', 'regex', 'heading', 'tableMap'] as 
   text-align: left;
   padding: 7px 10px;
   border-radius: var(--r-s);
-  font-size: 13px;
+  font-size: 1.3rem;
   color: var(--ink-2);
   transition: background 150ms ease, color 150ms ease;
 }
@@ -408,7 +408,7 @@ const strategyOptions = (['auto', 'keyword', 'regex', 'heading', 'tableMap'] as 
 .sr-name {
   flex: 0 0 90px;
   color: var(--ink-2);
-  font-size: 12px;
+  font-size: 1.2rem;
 }
 
 .sr-value {

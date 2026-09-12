@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import type { Settings, ThemeMode } from '../core/models'
 import { repo } from '../core/storage/repo'
+import { setStatusBarIcons } from '../lib/native'
 
 /**
  * 界面字体预设：id → CSS font-family。西文字体在前（拉丁与数字先命中），
@@ -26,7 +27,12 @@ function resolveTheme(mode: ThemeMode): 'light' | 'dark' {
 
 export const useSettingsStore = defineStore('settings', {
   state: () => ({
-    settings: { theme: 'system', defaultExportFormat: 'markdown', fontFamily: 'system' } as Settings,
+    settings: {
+      theme: 'system',
+      defaultExportFormat: 'markdown',
+      fontFamily: 'system',
+      fontScale: 1,
+    } as Settings,
   }),
   getters: {
     resolvedTheme: (s) => resolveTheme(s.settings.theme),
@@ -37,10 +43,14 @@ export const useSettingsStore = defineStore('settings', {
       this.apply()
     },
     apply() {
-      document.documentElement.dataset.theme = resolveTheme(this.settings.theme)
+      const theme = resolveTheme(this.settings.theme)
+      document.documentElement.dataset.theme = theme
       const font = this.settings.fontFamily
       if (!font || font === 'system') document.documentElement.style.removeProperty('--font')
       else document.documentElement.style.setProperty('--font', resolveFontStack(font))
+      document.documentElement.style.setProperty('--fs', String(this.settings.fontScale ?? 1))
+      // 安卓：状态栏图标明暗跟随主题（浅色顶栏配深色图标）
+      setStatusBarIcons(theme === 'light')
     },
     watchSystem() {
       window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {

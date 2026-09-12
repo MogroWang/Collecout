@@ -4,7 +4,8 @@ import { useRoute } from 'vue-router'
 import { useLibrariesStore } from './stores/libraries'
 import { useUiStore } from './stores/ui'
 import { t } from './locales/strings'
-import { isDesktop, isMobileLayout } from './lib/platform'
+import { isDesktop, isMobileLayout, platform } from './lib/platform'
+import { applySafeAreaInsets } from './lib/native'
 import AppIcon from './components/AppIcon.vue'
 import ToastHost from './components/ToastHost.vue'
 
@@ -18,6 +19,19 @@ const onMqChange = (e: MediaQueryListEvent) => (mobile.value = e.matches)
 
 onMounted(() => mq.addEventListener('change', onMqChange))
 onBeforeUnmount(() => mq.removeEventListener('change', onMqChange))
+
+/* 安卓 edge-to-edge：系统栏 insets 变化（旋转、分屏）时刷新 CSS 变量 */
+if (platform() === 'capacitor') {
+  onMounted(() => {
+    void applySafeAreaInsets()
+    window.addEventListener('resize', applySafeAreaInsets)
+    window.addEventListener('orientationchange', applySafeAreaInsets)
+  })
+  onBeforeUnmount(() => {
+    window.removeEventListener('resize', applySafeAreaInsets)
+    window.removeEventListener('orientationchange', applySafeAreaInsets)
+  })
+}
 
 const activeLibraryId = computed(() => (route.name === 'library' ? String(route.params.id) : ''))
 /** OOBE 首启向导独占整个窗口 */
@@ -296,7 +310,7 @@ async function closeWindow() {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
+  font-size: 1.3rem;
   font-weight: 600;
   color: var(--ink-2);
 }
@@ -451,7 +465,7 @@ async function closeWindow() {
 }
 
 .side-label {
-  font-size: 11px;
+  font-size: 1.1rem;
   font-weight: 600;
   color: var(--ink-3);
   padding: 0 10px 6px;
@@ -488,7 +502,7 @@ async function closeWindow() {
 }
 
 .lib-count {
-  font-size: 11px;
+  font-size: 1.1rem;
   color: var(--ink-3);
   font-variant-numeric: tabular-nums;
 }
@@ -502,7 +516,7 @@ async function closeWindow() {
   align-items: center;
   justify-content: space-between;
   padding: 10px 10px 2px;
-  font-size: 11px;
+  font-size: 1.1rem;
   color: var(--ink-3);
 }
 
@@ -534,13 +548,13 @@ async function closeWindow() {
   flex-direction: column;
 }
 
+/* 安卓 edge-to-edge：顶栏背景延伸到状态栏下，内容避让取 env() 与插件注入值中较大者 */
 .m-topbar {
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 52px;
-  padding: 0 16px;
-  padding-top: env(safe-area-inset-top);
+  height: calc(52px + max(env(safe-area-inset-top), var(--safe-top)));
+  padding: max(env(safe-area-inset-top), var(--safe-top)) 16px 0;
   background: var(--surface);
   border-bottom: 1px solid var(--hairline);
 }
@@ -567,13 +581,13 @@ async function closeWindow() {
 
 .m-version {
   margin-left: auto;
-  font-size: 12px;
+  font-size: 1.2rem;
   color: var(--ink-3);
   font-variant-numeric: tabular-nums;
 }
 
 .app-frame.mobile .main {
-  padding-bottom: calc(56px + env(safe-area-inset-bottom));
+  padding-bottom: calc(56px + max(env(safe-area-inset-bottom), var(--safe-bottom)));
 }
 
 .m-tabbar {
@@ -582,8 +596,8 @@ async function closeWindow() {
   right: 0;
   bottom: 0;
   display: flex;
-  height: calc(56px + env(safe-area-inset-bottom));
-  padding-bottom: env(safe-area-inset-bottom);
+  height: calc(56px + max(env(safe-area-inset-bottom), var(--safe-bottom)));
+  padding-bottom: max(env(safe-area-inset-bottom), var(--safe-bottom));
   background: var(--surface);
   border-top: 1px solid var(--hairline);
   z-index: 10;
@@ -596,7 +610,7 @@ async function closeWindow() {
   align-items: center;
   justify-content: center;
   gap: 2px;
-  font-size: 10px;
+  font-size: 1rem;
   color: var(--ink-3);
   text-decoration: none;
 }

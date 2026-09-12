@@ -2,7 +2,7 @@
 export const t = {
   appName: '萃序',
   appNameEn: 'Collecout',
-  version: '0.9.0',
+  version: '1.0.0',
 
   nav: {
     libraries: '库',
@@ -328,6 +328,9 @@ export const t = {
     fontCustom: '自定义…',
     fontCustomPlaceholder: '输入字体名，如「霞鹜文楷」或 Georgia',
     fontPreview: '萃序把零散文档萃成有序的信息库 Aa 123',
+    fontSize: '界面字号',
+    fontSizeSmall: '小',
+    fontSizeLarge: '大',
     exportDefaults: '导出',
     defaultFormat: '默认导出格式',
     data: '数据',

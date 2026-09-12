@@ -174,7 +174,7 @@ function openRelease() {
 
 .btn-sm {
   height: 28px;
-  font-size: 12px;
+  font-size: 1.2rem;
 }
 
 @media (max-width: 860px) {

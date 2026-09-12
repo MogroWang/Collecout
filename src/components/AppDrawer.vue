@@ -48,7 +48,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 }
 
 .drawer-head h2 {
-  font-size: 16px;
+  font-size: 1.6rem;
   font-weight: 600;
 }
 

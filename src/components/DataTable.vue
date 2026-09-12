@@ -197,7 +197,7 @@ function onRowClick(entry: Entry, index: number, e: MouseEvent) {
 
 .sort-mark {
   color: var(--accent);
-  font-size: 11px;
+  font-size: 1.1rem;
 }
 
 .cell-date {

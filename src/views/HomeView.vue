@@ -206,7 +206,7 @@ async function createLibrary() {
 }
 
 .lib-name {
-  font-size: 15px;
+  font-size: 1.5rem;
   font-weight: 600;
   margin-bottom: 4px;
   display: flex;
@@ -256,7 +256,7 @@ async function createLibrary() {
 
 .btn-sm {
   height: 28px;
-  font-size: 12px;
+  font-size: 1.2rem;
   align-self: flex-start;
 }
 

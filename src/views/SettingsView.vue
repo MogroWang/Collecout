@@ -77,6 +77,24 @@ function onCustomFontInput() {
   if (v) void settings.set({ fontFamily: v })
 }
 
+/* ---------- 界面字号 ---------- */
+const FONT_SCALE_MIN = 0.85
+const FONT_SCALE_MAX = 1.3
+const FONT_SCALE_STEP = 0.05
+
+const fontScaleDraft = ref(settings.settings.fontScale ?? 1)
+
+/** 拖动中即时改 --fs 预览（连续反馈），松手才落盘 */
+function onScaleInput(e: Event) {
+  const v = Number((e.target as HTMLInputElement).value)
+  fontScaleDraft.value = v
+  document.documentElement.style.setProperty('--fs', String(v))
+}
+
+async function onScaleCommit() {
+  await settings.set({ fontScale: fontScaleDraft.value })
+}
+
 const formatOptions = [
   { id: 'markdown', label: 'Markdown' },
   { id: 'text', label: t.exportDialog.fmtText },
@@ -178,6 +196,23 @@ async function applyNewRoot(dir: string | null) {
           @change="onCustomFontInput"
         />
       </div>
+      <div class="row font-size-row">
+        <span>{{ t.settings.fontSize }}</span>
+        <span class="fs-bound" aria-hidden="true">{{ t.settings.fontSizeSmall }}</span>
+        <input
+          class="fs-slider"
+          type="range"
+          :min="FONT_SCALE_MIN"
+          :max="FONT_SCALE_MAX"
+          :step="FONT_SCALE_STEP"
+          v-model.number="fontScaleDraft"
+          :aria-label="t.settings.fontSize"
+          @input="onScaleInput"
+          @change="onScaleCommit"
+        />
+        <span class="fs-bound" aria-hidden="true">{{ t.settings.fontSizeLarge }}</span>
+        <span class="fs-value meta">{{ Math.round(fontScaleDraft * 100) }}%</span>
+      </div>
       <p class="hint row-note font-preview">{{ t.settings.fontPreview }}</p>
     </section>
 
@@ -273,7 +308,7 @@ async function applyNewRoot(dir: string | null) {
 }
 
 .group-title {
-  font-size: 13px;
+  font-size: 1.3rem;
   font-weight: 600;
   margin-bottom: 12px;
   color: var(--ink-2);
@@ -326,21 +361,38 @@ async function applyNewRoot(dir: string | null) {
   margin-left: 8px;
 }
 
+/* 字号滑块：小/大 两端标注 + 实时百分数（等宽数字避免拖动时跳动） */
+.fs-bound {
+  color: var(--ink-3);
+  font-size: 1.2rem;
+}
+
+.fs-slider {
+  width: 180px;
+  accent-color: var(--accent);
+}
+
+.fs-value {
+  min-width: 3.6rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 /* 预览文本继承全局 --font（随上方选择即时更新） */
 .font-preview {
-  font-size: 15px;
+  font-size: 1.5rem;
   color: var(--ink);
 }
 
 .path {
   font-family: ui-monospace, 'SF Mono', Menlo, monospace;
-  font-size: 11.5px;
+  font-size: 1.15rem;
   word-break: break-all;
 }
 
 .btn-sm {
   height: 28px;
-  font-size: 12px;
+  font-size: 1.2rem;
 }
 
 .row-note {
@@ -364,6 +416,11 @@ async function applyNewRoot(dir: string | null) {
 @media (max-width: 860px) {
   .page {
     padding: 20px 16px 32px;
+  }
+
+  /* 窄屏收紧滑块，让「小—滑块—大—百分比」与标签同行放下 */
+  .fs-slider {
+    width: 132px;
   }
 }
 </style>

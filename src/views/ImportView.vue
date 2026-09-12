@@ -815,7 +815,7 @@ async function finish() {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: 1.2rem;
   color: var(--ink-3);
   padding: 4px 10px 4px 4px;
   border-radius: 999px;
@@ -842,7 +842,7 @@ async function finish() {
   height: 20px;
   border-radius: 50%;
   background: var(--surface-2);
-  font-size: 11px;
+  font-size: 1.1rem;
   font-variant-numeric: tabular-nums;
 }
 
@@ -889,7 +889,7 @@ async function finish() {
 }
 
 .dropzone h2 {
-  font-size: 15px;
+  font-size: 1.5rem;
   font-weight: 600;
   color: var(--ink);
 }
@@ -908,7 +908,7 @@ async function finish() {
 }
 
 .file-title {
-  font-size: 13px;
+  font-size: 1.3rem;
   font-weight: 600;
   color: var(--ink-2);
 }
@@ -1093,7 +1093,7 @@ async function finish() {
 .cell-input {
   height: 26px;
   padding: 0 6px;
-  font-size: 12.5px;
+  font-size: 1.25rem;
   min-width: 90px;
 }
 
@@ -1184,7 +1184,7 @@ async function finish() {
 }
 
 .loc-label {
-  font-size: 12px;
+  font-size: 1.2rem;
   font-weight: 600;
   color: var(--ink-2);
 }
@@ -1206,7 +1206,7 @@ async function finish() {
 
 .loc-name {
   font-weight: 500;
-  font-size: 12.5px;
+  font-size: 1.25rem;
   word-break: break-all;
 }
 
@@ -1266,7 +1266,7 @@ async function finish() {
 .seg-sm button {
   height: 24px;
   padding: 0 10px;
-  font-size: 12px;
+  font-size: 1.2rem;
 }
 
 .diff-list {
@@ -1282,7 +1282,7 @@ async function finish() {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
+  font-size: 1.2rem;
   min-width: 0;
 }
 

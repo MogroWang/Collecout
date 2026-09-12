@@ -145,7 +145,7 @@ function onCheck(entry: Entry, index: number, e: Event) {
 }
 
 .card-title {
-  font-size: 14px;
+  font-size: 1.4rem;
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -162,7 +162,7 @@ function onCheck(entry: Entry, index: number, e: Event) {
 .card-row {
   display: flex;
   gap: 10px;
-  font-size: 12.5px;
+  font-size: 1.25rem;
   min-width: 0;
 }
 

@@ -485,8 +485,14 @@ const winRgba = (s, radius = 0.2, logoRatio = 0.64) => render(polys166, s, { boa
 const winStyle = (s, radius = 0.2, logoRatio = 0.64) => png(winRgba(s, radius, logoRatio), s)
 /** macOS 传统规格：824/1024 白底圆角板 + logo，系统会为 macOS 26 自动遮罩适配 */
 const macStyle = (s) => png(render(polys166, s, { boardRatio: 0.805, boardRadius: 0.225, logoRatio: 0.52 }), s)
-/** Android 自适应前景：透明底，logo 落在中心 62% 安全区内 */
-const androidFg = (s) => png(render(polys166, s, { boardRatio: 0, logoRatio: 0.62 }), s)
+/** Android 自适应前景：透明底。logo 近方形，四角离圆心最远；按 bbox 对角线反推，
+ *  最大边占比 ≤ 0.44 才能整体落在 66dp 安全圆内——0.62 时四角被启动器圆形遮罩
+ *  裁掉，图形看起来不完整也不居中（0.9 及之前的问题）。 */
+const androidFg = (s) => png(render(polys166, s, { boardRatio: 0, logoRatio: 0.44 }), s)
+/** Android 圆形启动器：白色圆板 + 居中 logo（旧版是透明底裸 logo，深色壁纸上没有衬底） */
+const androidRound = (s) => png(render(polys166, s, { boardRatio: 1, boardRadius: 0.5, logoRatio: 0.58 }), s)
+/** 启动画面 logo：透明底纯图形，配合 drawable/splash.xml 的白底 layer-list 居中显示 */
+const splashLogo = (s) => png(render(polys166, s, { boardRatio: 0, logoRatio: 0.72 }), s)
 
 mkdirSync(OUT, { recursive: true })
 const jobs = []
@@ -553,7 +559,7 @@ emit(
 // 1024 源图存档
 emit('app-icon.png', winStyle(1024))
 
-// Android：legacy 方形启动器（白底圆角）+ 圆形启动器（透明底，仅 logo 本身，不套圆形背景）+ 自适应前景
+// Android：legacy 方形启动器（白底圆角）+ 圆形启动器（白圆板 + logo）+ 自适应前景
 const dpi = { mdpi: 1, hdpi: 1.5, xhdpi: 2, xxhdpi: 3, xxxhdpi: 4 }
 for (const [d, k] of Object.entries(dpi)) {
   const dir = join(OUT_ANDROID, `mipmap-${d}`)
@@ -561,9 +567,18 @@ for (const [d, k] of Object.entries(dpi)) {
   const legacy = Math.round(48 * k)
   const fg = Math.round(108 * k)
   writeFileSync(join(dir, 'ic_launcher.png'), winStyle(legacy, 0.2))
-  writeFileSync(join(dir, 'ic_launcher_round.png'), androidFg(legacy))
+  writeFileSync(join(dir, 'ic_launcher_round.png'), androidRound(legacy))
   writeFileSync(join(dir, 'ic_launcher_foreground.png'), androidFg(fg))
   jobs.push(`android/mipmap-${d}/*`)
+}
+
+// 启动画面 logo（白底由 drawable/splash.xml 提供）：只出一份 xxhdpi 档，
+// 其他密度由系统按 96dp 缩放显示，无需多套位图
+{
+  const dir = join(OUT_ANDROID, 'drawable-xxhdpi')
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, 'splash_logo.png'), splashLogo(288))
+  jobs.push('android/drawable-xxhdpi/splash_logo.png')
 }
 
 console.log(`已生成 ${jobs.length} 项图标资产`)

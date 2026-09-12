@@ -132,14 +132,14 @@ function ruleText(rule: FilterRule): string {
 }
 
 .panel-head h3 {
-  font-size: 13px;
+  font-size: 1.3rem;
   font-weight: 600;
 }
 
 .btn-sm {
   height: 26px;
   padding: 0 10px;
-  font-size: 12px;
+  font-size: 1.2rem;
 }
 
 .rule-list {

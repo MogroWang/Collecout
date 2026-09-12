@@ -7,7 +7,26 @@ import { useSettingsStore } from './stores/settings'
 import { useLibrariesStore } from './stores/libraries'
 import { useTemplatesStore } from './stores/templates'
 import { useUiStore } from './stores/ui'
+import { isDesktop } from './lib/platform'
 import './styles/base.css'
+
+/* ---------- 启动界面（index.html 静态层） ----------
+ * 淡出时机：数据就绪且至少展示 1.4s，避免一闪而过；桌面窗口隐藏到首帧，直接移除。 */
+const SPLASH_MIN_MS = 1400
+const bootStart = performance.now()
+
+function dismissSplash(): void {
+  const el = document.getElementById('splash')
+  if (!el) return
+  if (isDesktop()) {
+    el.remove()
+    return
+  }
+  // 跟随已解析的主题换底色，避免深色用户在淡出瞬间撞上白屏
+  el.style.background = document.documentElement.dataset.theme === 'dark' ? '#1b1b1d' : ''
+  el.classList.add('leaving')
+  el.addEventListener('animationend', () => el.remove(), { once: true })
+}
 
 async function bootstrap() {
   await initRepo()
@@ -54,6 +73,9 @@ async function bootstrap() {
   app.mount('#app')
 
   if (onboarding) await router.replace('/oobe')
+
+  // 启动层至少展示 SPLASH_MIN_MS：加载快时补足剩余时间，加载慢时立刻开始淡出
+  setTimeout(dismissSplash, Math.max(0, SPLASH_MIN_MS - (performance.now() - bootStart)))
 }
 
 void bootstrap()

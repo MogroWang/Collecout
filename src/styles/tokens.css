@@ -1,5 +1,10 @@
 /* 萃序设计令牌：单一墨青强调色 + 纸白/墨两级中性色，层级靠字号字重与留白表达 */
 :root {
+  /* 安卓 edge-to-edge 的系统栏避让量：SystemBars 插件注入实际值，env() 优先（iOS/web 原生支持） */
+  --safe-top: 0px;
+  --safe-bottom: 0px;
+  /* 界面字号缩放（设置页滑块），1rem = 10px × 缩放；所有 font-size 以 rem 表达 */
+  --fs: 1;
   --bg: #f4f3f0;
   --surface: #ffffff;
   --surface-2: #edece8;

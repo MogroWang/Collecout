@@ -13,10 +13,20 @@
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
         <item name="android:background">@null</item>
+        <!-- edge-to-edge：WebView 延伸到状态栏/导航栏下面，避让由 web 层的
+             --safe-top / --safe-bottom 完成（MainActivity 显式开启，API 35 起系统强制） -->
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">true</item>
     </style>
 
 
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
-        <item name="android:background">@drawable/splash</item>
+        <!-- splash 消失后、WebView 首帧前的窗口底：白底 + 居中 logo，与系统 splash 同样式 -->
+        <item name="android:windowBackground">@drawable/splash</item>
+        <!-- API 31+ 系统 splash（androidx core-splashscreen 兼容属性） -->
+        <item name="windowSplashScreenBackground">@color/splash_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
     </style>
 </resources>

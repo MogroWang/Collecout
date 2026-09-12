@@ -211,13 +211,13 @@ async function start() {
 }
 
 .hero h1 {
-  font-size: 22px;
+  font-size: 2.2rem;
   font-weight: 700;
   letter-spacing: -0.01em;
 }
 
 .loc-title {
-  font-size: 15px;
+  font-size: 1.5rem;
   font-weight: 600;
 }
 
@@ -253,7 +253,7 @@ async function start() {
 
 .loc-path {
   font-family: ui-monospace, 'SF Mono', Menlo, monospace;
-  font-size: 11.5px;
+  font-size: 1.15rem;
   word-break: break-all;
 }
 

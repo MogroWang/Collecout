@@ -12,9 +12,14 @@ body,
   height: 100%;
 }
 
+html {
+  /* 字号缩放基准：1rem = 10px × --fs，全部文字按设置页滑块缩放，结构尺寸保持 px */
+  font-size: calc(10px * var(--fs));
+}
+
 body {
   margin: 0;
-  font: 400 13px/1.5 var(--font);
+  font: 400 1.3rem/1.5 var(--font);
   color: var(--ink);
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
@@ -64,25 +69,25 @@ textarea {
 
 /* ---------- 排版 ---------- */
 .large-title {
-  font-size: 26px;
+  font-size: 2.6rem;
   font-weight: 700;
   letter-spacing: -0.02em;
   line-height: 1.15;
 }
 
 .section-title {
-  font-size: 17px;
+  font-size: 1.7rem;
   font-weight: 600;
   letter-spacing: -0.01em;
 }
 
 .meta {
-  font-size: 12px;
+  font-size: 1.2rem;
   color: var(--ink-2);
 }
 
 .hint {
-  font-size: 12px;
+  font-size: 1.2rem;
   color: var(--ink-3);
 }
 
@@ -250,7 +255,7 @@ textarea.input:focus {
   height: 22px;
   padding: 0 9px;
   border-radius: 11px;
-  font-size: 12px;
+  font-size: 1.2rem;
   background: var(--accent-soft);
   color: var(--accent);
   font-weight: 500;
@@ -266,7 +271,7 @@ textarea.input:focus {
 .data-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: 1.3rem;
 }
 
 .data-table th {
@@ -276,7 +281,7 @@ textarea.input:focus {
   background: var(--surface);
   text-align: left;
   font-weight: 600;
-  font-size: 12px;
+  font-size: 1.2rem;
   color: var(--ink-2);
   padding: 10px 12px;
   border-bottom: 1px solid var(--hairline-strong);
@@ -343,7 +348,7 @@ textarea.input:focus {
 }
 
 .empty-state h2 {
-  font-size: 17px;
+  font-size: 1.7rem;
   font-weight: 600;
 }
 
@@ -538,7 +543,7 @@ textarea.input:focus {
   background: var(--elevated);
   border: 1px solid var(--hairline);
   box-shadow: var(--shadow-1);
-  font-size: 13px;
+  font-size: 1.3rem;
   max-width: 70vw;
 }
 
@@ -561,7 +566,7 @@ textarea.input:focus {
 }
 
 .form-row > label {
-  font-size: 12px;
+  font-size: 1.2rem;
   font-weight: 600;
   color: var(--ink-2);
 }
