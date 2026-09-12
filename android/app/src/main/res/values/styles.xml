@@ -14,7 +14,7 @@
         <item name="windowNoTitle">true</item>
         <item name="android:background">@null</item>
         <!-- edge-to-edge：WebView 延伸到状态栏/导航栏下面，避让由 web 层的
-             --safe-top / --safe-bottom 完成（MainActivity 显式开启，API 35 起系统强制） -->
+             safe-top / safe-bottom 两个 CSS 变量完成（MainActivity 显式开启，API 35 起系统强制） -->
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowLightStatusBar">true</item>
