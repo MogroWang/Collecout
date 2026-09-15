@@ -675,7 +675,6 @@ async function pickNewLocation() {
 /* 页面占满主区高度：标题/工具栏固定，条目区自身滚动（垂直 + 水平独立滚动条） */
 .page {
   padding: 24px 32px 16px;
-  max-width: 1200px;
   height: 100%;
   display: flex;
   flex-direction: column;

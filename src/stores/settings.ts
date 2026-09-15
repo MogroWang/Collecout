@@ -32,6 +32,7 @@ export const useSettingsStore = defineStore('settings', {
       defaultExportFormat: 'markdown',
       fontFamily: 'system',
       fontScale: 1,
+      titlebarHints: true,
     } as Settings,
   }),
   getters: {

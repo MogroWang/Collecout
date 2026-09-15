@@ -258,7 +258,6 @@ const strategyOptions = (['auto', 'keyword', 'regex', 'heading', 'tableMap'] as 
 <style scoped>
 .page {
   padding: 28px 32px 48px;
-  max-width: 1200px;
 }
 
 .page-head {

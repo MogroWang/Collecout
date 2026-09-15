@@ -114,6 +114,8 @@ export interface Settings {
   fontFamily: FontSetting
   /** 界面字号缩放（1rem = 10px × 此值），设置页滑块可调，范围 0.85–1.3 */
   fontScale: number
+  /** 桌面端：悬停控件时标题栏中间显示该控件的用途说明 */
+  titlebarHints: boolean
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -121,6 +123,7 @@ export const DEFAULT_SETTINGS: Settings = {
   defaultExportFormat: 'markdown',
   fontFamily: 'system',
   fontScale: 1,
+  titlebarHints: true,
 }
 
 /** crypto.randomUUID 仅在安全上下文可用，兜底保证任何环境都能生成 id */

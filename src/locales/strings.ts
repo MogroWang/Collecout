@@ -2,7 +2,7 @@
 export const t = {
   appName: '萃序',
   appNameEn: 'Collecout',
-  version: '1.0.0',
+  version: '1.1.0',
 
   nav: {
     libraries: '库',
@@ -331,6 +331,8 @@ export const t = {
     fontSize: '界面字号',
     fontSizeSmall: '小',
     fontSizeLarge: '大',
+    titlebarHints: '标题栏悬停提示',
+    titlebarHintsDesc: '鼠标悬停在控件上时，标题栏中间显示该控件的用途说明。',
     exportDefaults: '导出',
     defaultFormat: '默认导出格式',
     data: '数据',

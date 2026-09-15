@@ -161,7 +161,7 @@ async function closeWindow() {
           </div>
         </aside>
 
-        <!-- 侧边栏折叠后的悬浮展开把手：贴左缘垂直居中，桌面与 web 预览通用 -->
+        <!-- 侧边栏折叠后的悬浮展开把手：固定在右下角，桌面与 web 预览通用 -->
         <Transition name="fab">
           <button
             v-if="!mobile && ui.sidebarCollapsed"
@@ -242,18 +242,17 @@ async function closeWindow() {
   -webkit-user-select: none;
 }
 
-/* 侧边栏完全折叠后，贴左缘垂直居中的悬浮展开把手（web 预览没有标题栏，也能展开） */
+/* 侧边栏完全折叠后，右下角的悬浮展开把手（web 预览没有标题栏，也能展开） */
 .sidebar-fab {
   position: fixed;
-  left: 10px;
-  top: 50%;
-  transform: translateY(-50%);
+  right: 14px;
+  bottom: 14px;
   z-index: 40;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   border-radius: 999px;
   background: var(--elevated);
   border: 1px solid var(--hairline);
@@ -266,7 +265,7 @@ async function closeWindow() {
   border-color: var(--hairline-strong);
 }
 
-/* 与按钮的 translateY(-50%) 共存的进出过渡 */
+/* 与固定定位共存的进出过渡：从右缘轻位移滑入，同路径退出 */
 .fab-enter-active {
   transition: opacity 150ms ease, transform 200ms var(--ease-sheet);
 }
@@ -278,7 +277,7 @@ async function closeWindow() {
 .fab-enter-from,
 .fab-leave-to {
   opacity: 0;
-  transform: translateY(-50%) translateX(-8px);
+  transform: translateX(8px);
 }
 
 .tb-brand {

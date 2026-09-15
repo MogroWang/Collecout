@@ -179,7 +179,6 @@ async function createLibrary() {
 <style scoped>
 .page {
   padding: 28px 32px 48px;
-  max-width: 1080px;
 }
 
 .page-head {

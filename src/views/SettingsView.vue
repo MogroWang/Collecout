@@ -84,6 +84,11 @@ const FONT_SCALE_STEP = 0.05
 
 const fontScaleDraft = ref(settings.settings.fontScale ?? 1)
 
+/** 已填充轨道的比例（0–100%），驱动滑块的 accent 填充长度 */
+const fillPct = computed(
+  () => `${((fontScaleDraft.value - FONT_SCALE_MIN) / (FONT_SCALE_MAX - FONT_SCALE_MIN)) * 100}%`,
+)
+
 /** 拖动中即时改 --fs 预览（连续反馈），松手才落盘 */
 function onScaleInput(e: Event) {
   const v = Number((e.target as HTMLInputElement).value)
@@ -106,6 +111,12 @@ const formatOptions = [
 
 async function setTheme(id: 'system' | 'light' | 'dark') {
   await settings.set({ theme: id })
+}
+
+/** 标题栏悬停提示开关：关闭后立刻清掉当前显示的提示 */
+function toggleTitlebarHints() {
+  void settings.set({ titlebarHints: !settings.settings.titlebarHints })
+  ui.setHoverHint(null)
 }
 
 async function openDataFolder() {
@@ -180,6 +191,21 @@ async function applyNewRoot(dir: string | null) {
           </button>
         </div>
       </div>
+      <div class="row">
+        <span>{{ t.settings.titlebarHints }}</span>
+        <button
+          class="switch"
+          :class="{ on: settings.settings.titlebarHints }"
+          type="button"
+          role="switch"
+          :aria-checked="settings.settings.titlebarHints"
+          :aria-label="t.settings.titlebarHints"
+          @click="toggleTitlebarHints"
+        >
+          <i class="knob" aria-hidden="true" />
+        </button>
+      </div>
+      <p class="hint row-note">{{ t.settings.titlebarHintsDesc }}</p>
       <div class="row font-row">
         <span>{{ t.settings.font }}</span>
         <AppSelect
@@ -205,6 +231,7 @@ async function applyNewRoot(dir: string | null) {
           :min="FONT_SCALE_MIN"
           :max="FONT_SCALE_MAX"
           :step="FONT_SCALE_STEP"
+          :style="{ '--fill': fillPct }"
           v-model.number="fontScaleDraft"
           :aria-label="t.settings.fontSize"
           @input="onScaleInput"
@@ -361,15 +388,113 @@ async function applyNewRoot(dir: string | null) {
   margin-left: 8px;
 }
 
+/* 开关（iOS 药丸式）：knob 用 transform 位移，不重排 */
+.switch {
+  flex: none;
+  position: relative;
+  width: 42px;
+  height: 25px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--hairline-strong);
+  transition: background 180ms ease, border-color 180ms ease;
+}
+
+.switch .knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: transform 180ms var(--ease-sheet);
+}
+
+.switch.on {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.switch.on .knob {
+  transform: translateX(17px);
+}
+
 /* 字号滑块：小/大 两端标注 + 实时百分数（等宽数字避免拖动时跳动） */
 .fs-bound {
   color: var(--ink-3);
   font-size: 1.2rem;
 }
 
+/* 自绘滑块：4px 圆角轨道 + 描边圆钮（--fill 由组件按当前值驱动 accent 填充长度） */
 .fs-slider {
+  -webkit-appearance: none;
+  appearance: none;
   width: 180px;
-  accent-color: var(--accent);
+  height: 24px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.fs-slider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(to right, var(--accent) var(--fill, 0%), var(--hairline-strong) var(--fill, 0%));
+}
+
+.fs-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 17px;
+  height: 17px;
+  margin-top: -6.5px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 1px solid var(--hairline-strong);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+  transition: transform 120ms ease;
+}
+
+.fs-slider:hover::-webkit-slider-thumb {
+  transform: scale(1.08);
+}
+
+.fs-slider:active::-webkit-slider-thumb {
+  transform: scale(1.14);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.26);
+}
+
+.fs-slider::-moz-range-track {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--hairline-strong);
+}
+
+.fs-slider::-moz-range-progress {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.fs-slider::-moz-range-thumb {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 1px solid var(--hairline-strong);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+  transition: transform 120ms ease;
+}
+
+.fs-slider:hover::-moz-range-thumb {
+  transform: scale(1.08);
+}
+
+.fs-slider:active::-moz-range-thumb {
+  transform: scale(1.14);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.26);
 }
 
 .fs-value {

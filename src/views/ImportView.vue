@@ -782,7 +782,6 @@ async function finish() {
 <style scoped>
 .page {
   padding: 28px 32px 20px;
-  max-width: 1080px;
   display: flex;
   flex-direction: column;
   min-height: 100%;
@@ -1375,8 +1374,57 @@ async function finish() {
     padding: 20px 16px 32px;
   }
 
-  .map-field {
-    flex-basis: 90px;
+  /* 头部换行：返回 + 标题一行，步骤指示整行落到下方，不再挤压标题 */
+  .page-head {
+    flex-wrap: wrap;
+  }
+
+  .steps {
+    flex-basis: 100%;
+    justify-content: flex-start;
+    margin-left: 0;
+  }
+
+  .dropzone {
+    padding: 32px 16px;
+  }
+
+  /* 工作表/布局调节行：窄屏下拉独占剩余宽度 */
+  .tune-row {
+    flex-wrap: wrap;
+  }
+
+  .tune-row .select {
+    flex: 1 1 160px;
+    min-width: 0;
+  }
+
+  /* 字段映射行：字段名与下拉允许换行，下拉占满一行 */
+  .map-row {
+    flex-wrap: wrap;
+  }
+
+  .map-row .select {
+    flex: 1 1 160px;
+  }
+
+  /* 冲突行：标题独占一行，覆盖/跳过与编辑按钮换到下一行 */
+  .conflict-main {
+    flex-wrap: wrap;
+  }
+
+  .seg-sm {
+    margin-right: auto;
+  }
+
+  /* 差异对比与预览单元格在窄屏收窄，避免横向溢出 */
+  .diff-old,
+  .diff-new {
+    max-width: 34vw;
+  }
+
+  .cell-truncate {
+    max-width: 180px;
   }
 }
 </style>

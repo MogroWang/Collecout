@@ -7,25 +7,22 @@ import { useSettingsStore } from './stores/settings'
 import { useLibrariesStore } from './stores/libraries'
 import { useTemplatesStore } from './stores/templates'
 import { useUiStore } from './stores/ui'
-import { isDesktop } from './lib/platform'
 import './styles/base.css'
 
 /* ---------- 启动界面（index.html 静态层） ----------
- * 淡出时机：数据就绪且至少展示 1.4s，避免一闪而过；桌面窗口隐藏到首帧，直接移除。 */
+ * 淡出时机：数据就绪且至少展示 1.4s，避免一闪而过；全平台一致走淡出动画。 */
 const SPLASH_MIN_MS = 1400
 const bootStart = performance.now()
 
 function dismissSplash(): void {
   const el = document.getElementById('splash')
   if (!el) return
-  if (isDesktop()) {
-    el.remove()
-    return
-  }
   // 跟随已解析的主题换底色，避免深色用户在淡出瞬间撞上白屏
   el.style.background = document.documentElement.dataset.theme === 'dark' ? '#1b1b1d' : ''
   el.classList.add('leaving')
   el.addEventListener('animationend', () => el.remove(), { once: true })
+  // 动画事件丢失（如动画被系统提前裁剪）时兜底清除
+  setTimeout(() => el.remove(), 700)
 }
 
 async function bootstrap() {
@@ -38,10 +35,14 @@ async function bootstrap() {
     ;(window as unknown as Record<string, unknown>).__pinia = pinia
   }
 
-  // v-hint：悬停控件时把用途说明显示到桌面标题栏中间，移开或点击后恢复页面标题
+  // v-hint：悬停控件时把用途说明显示到桌面标题栏中间，移开或点击后恢复页面标题；
+  // 设置里关闭「标题栏悬停提示」后不再响应（已在显示的提示由设置页关闭时清空）
   app.directive('hint', {
     mounted(el: HTMLElement, binding) {
-      const show = () => useUiStore().setHoverHint(binding.value as string)
+      const show = () => {
+        if (useSettingsStore().settings.titlebarHints === false) return
+        useUiStore().setHoverHint(binding.value as string)
+      }
       const hide = () => useUiStore().setHoverHint(null)
       el.addEventListener('mouseenter', show)
       el.addEventListener('mouseleave', hide)
